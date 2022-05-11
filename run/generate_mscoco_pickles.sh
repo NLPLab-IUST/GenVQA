@@ -1,1 +1,1 @@
-python -m src.data.create_mscoco_pickles $1
+python -m src.data.raw.create_mscoco_pickles $1
