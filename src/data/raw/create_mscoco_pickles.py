@@ -10,7 +10,7 @@ import argparse
 import src.logger as Logger
 csv.field_size_limit(sys.maxsize)
 
-class MSCOCODataset():
+class MSCOCODataset:
     def __init__(self, raw_path, delimiter='\t'):
         self.raw_path = tsv_path
         self.Fields = ["img_id", "img_h", "img_w", "objects_id", "objects_conf",
