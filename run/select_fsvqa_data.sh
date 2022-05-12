@@ -1,1 +1,1 @@
-python -m src.data.raw.fsvqa_manager $1
+python3 -m src.data.raw.fsvqa_manager $1 $2 $3 $4

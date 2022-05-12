@@ -50,4 +50,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     mscoco_handler = MSCOCODataset(args.input)
     mscoco_handler.extract_images(args.output_dir)
-    Logger.Instance.log(module_name, f"Generated new pickle files at {parser.output_dir}")
+    Logger.Instance.log(module_name, f"Generated new pickle files at {args.output_dir}")

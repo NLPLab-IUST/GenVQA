@@ -3,6 +3,7 @@ import src.logger as Logger
 import random
 import pickle
 import os
+import argparse
 class FSVQAManager:
     
     def __init__(self, annotations_json, questions_json):
@@ -38,6 +39,6 @@ if __name__ == "__main__":
     parser.add_argument('--k', help='number of instances')
     parser.add_argument('--out_dir', help='output directory')
     args = parser.parse_args()
-    fsvqa_manager = FSVQAManager(args.annotations, parse.questions)
+    fsvqa_manager = FSVQAManager(args.annotations, args.questions)
     fsvqa_manager.select_and_save(args.k, args.out_dir)
     Logger.Instance.log(module_name, f"Generated new pickle files at {args.out_dir} with {args.k} instances.")
