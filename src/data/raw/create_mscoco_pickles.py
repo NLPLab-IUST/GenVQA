@@ -21,7 +21,7 @@ class MSCOCODataset:
         with open(self.raw_path, 'r') as f:
             reader = csv.DictReader(f, self.Fields, delimiter=self.delimiter)
             for i, item in tqdm.tqdm(enumerate(reader)):
-                id = int(id = int(item['img_id'].split('_')[-1]))
+                id = int(item['img_id'].split('_')[-1])
                 if(needed_image_ids is None or id in needed_image_ids):
                     for key in ['img_h', 'img_w', 'num_boxes']:
                         item[key] = int(item[key])
