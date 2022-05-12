@@ -11,6 +11,7 @@ class FSVQAManager:
             self.annotations = json.load(f)
         with open(questions_json, 'r') as f:
             self.questions = json.load(f)
+        dic = {}
         for q in self.questions['questions']:
             dic[q['question_id']] = q
         self.questions = dic
@@ -22,7 +23,7 @@ class FSVQAManager:
         mini_data = random.choices(self.annotations['annotations'], k=k)
         chosen_questions = { }
         for each in mini_data:
-            chosen_questions[each['question_id']] = questions[each['question_id']]
+            chosen_questions[each['question_id']] = self.questions[each['question_id']]
         annotations_path = os.path.join(output_dir, self.annotations_filename)
         questions_path = os.path.join(output_dir, self.questions_filename)
         with open(annotations_path, 'wb') as f:
@@ -40,5 +41,5 @@ if __name__ == "__main__":
     parser.add_argument('--out_dir', help='output directory')
     args = parser.parse_args()
     fsvqa_manager = FSVQAManager(args.annotations, args.questions)
-    fsvqa_manager.select_and_save(args.k, args.out_dir)
+    fsvqa_manager.select_and_save(int(args.k), args.out_dir)
     Logger.Instance.log(module_name, f"Generated new pickle files at {args.out_dir} with {args.k} instances.")
