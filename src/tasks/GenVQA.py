@@ -1,6 +1,8 @@
 import torch.nn as nn
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
+from src.models import LXMERT_LSTM
+from src.data.datasets import GenVQADataset
 class VQA:
     def __init__(self, train_dset,  model, val_dset=None, tokenizer=None, use_cuda=True, batch_size=32, epochs=50, lr=5e-5):
         
@@ -24,3 +26,13 @@ class VQA:
         for i, (input_ids, feats, boxes, masks, target) in enumerate(tqdm(self.train_loader, total=len(self.train_loader))):
             self.model.train()
             self.optim.zero_grad()
+
+
+if __name__ == "__main__":
+    model = LXMERT_LSTM()
+    dset = GenVQADataset(model.Tokenizer, 
+        annotations = "../fsvqa_data_trian/annotations.pickle", 
+        questions = "../fsvqa_data_trian/questions.pickle", 
+        img_dir = "../img_data")
+    vqa = VQA(dset, model)
+    vqa.train()

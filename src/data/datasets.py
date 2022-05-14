@@ -3,7 +3,7 @@ import os
 from torch.utils.data import Dataset
 
 class GenVQADataset(Dataset):
-    def __init__(self, embedding_layer, tokenizer, annotations, questions, img_dir):
+    def __init__(self, tokenizer, annotations, questions, img_dir):
         with open(annotations, 'rb') as f:
             self.annotations = pickle.load(f)
         with open(questions, 'rb') as f:
