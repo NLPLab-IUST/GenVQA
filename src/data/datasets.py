@@ -14,7 +14,7 @@ class GenVQADataset(Dataset):
     def __getitem__(self, idx):
         dataum = self.annotations[idx]
         q = self.questions[dataum['question_id']]
-        img_path = os.path.join(self.img_dir, dataum['img_id'])
+        img_path = os.path.join(self.img_dir, f"{dataum['img_id']}.pickle")
         with open(img_path, 'rb') as f:
             img = pickle.load(f)
         tokenized_sentence = self.tokenizer(q['question'])
@@ -22,11 +22,12 @@ class GenVQADataset(Dataset):
         attention_mask = tokenized_sentence['attention_mask']
         visual_feats = img['features']
         boxes = img['boxes']
-        img_h, img_w = img_features['img_h'], img_features['img_w']
+        img_h, img_w = img['img_h'], img['img_w']
         boxes = boxes.copy()
         boxes[:, (0, 2)] /= img_w
         boxes[:, (1, 3)] /= img_h
-
+        visual_pos = boxes
+        
         # labels
         if 'answers' in dataum.keys():
             answer = dataum['answers'][0]
@@ -36,3 +37,5 @@ class GenVQADataset(Dataset):
             return input_ids, visual_feats, visual_pos, attention_mask, label_tokenized
         
         return input_ids, visual_feats, visual_pos, attention_mask, None
+    def __len__(self):
+        return len(self.annotations)

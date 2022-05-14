@@ -4,9 +4,10 @@ from src.models.LSTM import LSTMModel
 
 class LXMERT_LSTM(torch.nn.Module):
     def __init__(self):
+        super().__init__()
         self.LXMERT = LxmertModel.from_pretrained("unc-nlp/lxmert-base-uncased")
         self.Tokenizer = LxmertTokenizer.from_pretrained("unc-nlp/lxmert-base-uncased")
-        self.embedding_layer = list(lxmert.children())[0].word_embeddings
+        self.embedding_layer = list(self.LXMERT.children())[0].word_embeddings
         self.LSTM = LSTMModel(output_size=self.Tokenizer.vocab_size)
     def forward(self, input_ids, visual_feats, visual_pos, attention_mask, answer_tokenized):
         """

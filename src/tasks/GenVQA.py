@@ -3,6 +3,8 @@ from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 from src.models import LXMERT_LSTM
 from src.data.datasets import GenVQADataset
+import torch
+
 class VQA:
     def __init__(self, train_dset,  model, val_dset=None, tokenizer=None, use_cuda=True, batch_size=32, epochs=50, lr=5e-5):
         
@@ -14,14 +16,10 @@ class VQA:
             self.model = self.model.cuda()
         self.loss = nn.BCEWithLogitsLoss()
 
-        batch_per_epoch = len(train_loader)
+        batch_per_epoch = len(self.train_loader)
         t_total = int(batch_per_epoch * epochs)
         print("BertAdam Total Iters: %d" % t_total)
-        from lxrt.optimization import BertAdam
-        self.optim = BertAdam(list(self.model.parameters()),
-                                lr=lr,
-                                warmup=0.1,
-                                t_total=t_total)
+        self.optim = torch.optim.Adam(list(self.model.parameters()), lr=lr)
     def train(self):
         for i, (input_ids, feats, boxes, masks, target) in enumerate(tqdm(self.train_loader, total=len(self.train_loader))):
             self.model.train()
@@ -29,7 +27,7 @@ class VQA:
 
 
 if __name__ == "__main__":
-    model = LXMERT_LSTM()
+    model = LXMERT_LSTM.LXMERT_LSTM()
     dset = GenVQADataset(model.Tokenizer, 
         annotations = "../fsvqa_data_trian/annotations.pickle", 
         questions = "../fsvqa_data_trian/questions.pickle", 
