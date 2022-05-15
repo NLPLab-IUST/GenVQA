@@ -1,1 +1,1 @@
-python3 -m src.data.raw.validate_dataset $1 $2 $3
+python3 -m src.data.raw.validate_dataset $1 $2 $3 $4

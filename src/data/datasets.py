@@ -3,13 +3,14 @@ import os
 from torch.utils.data import Dataset
 
 class GenVQADataset(Dataset):
-    def __init__(self, tokenizer, annotations, questions, img_dir):
+    def __init__(self, tokenizer, annotations, questions, img_dir, batch_size=32):
         with open(annotations, 'rb') as f:
             self.annotations = pickle.load(f)
         with open(questions, 'rb') as f:
             self.questions = pickle.load(f)
         self.img_dir = img_dir
         self.tokenizer = tokenizer
+        self.batch_size = 32
 
     def __getitem__(self, idx):
         dataum = self.annotations[idx]
@@ -27,7 +28,7 @@ class GenVQADataset(Dataset):
         boxes[:, (0, 2)] /= img_w
         boxes[:, (1, 3)] /= img_h
         visual_pos = boxes
-        
+
         # labels
         if 'answers' in dataum.keys():
             answer = dataum['answers'][0]
