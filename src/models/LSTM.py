@@ -22,7 +22,7 @@ class LSTMModel(torch.nn.Module):
             encoder_output: encode output of size (N, hidden_size)
         """
         h0 = encoder_output.unsqueeze(0)
-        c0 = torch.zeros(*h0.shape)
+        c0 = torch.zeros(*h0.shape).cuda()
         output, _ = self.LSTM(x, (h0, c0))
         output = self.Linear(output)
         return self.softmax(output)

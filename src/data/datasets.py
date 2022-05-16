@@ -55,4 +55,4 @@ def pad_batched_sequence(batch):
         label_tokenized = [torch.tensor(item[4]) for item in batch]
         label_tokenized = pad_sequence(label_tokenized, batch_first=True, padding_value=0)
     
-    return input_ids, torch.stack(visual_feats, dim=0), torch.stack(visual_pos, dim=0), attention_mask, label_tokenized
+    return input_ids.cuda(), torch.stack(visual_feats, dim=0).cuda(), torch.stack(visual_pos, dim=0).cuda(), attention_mask.cuda(), label_tokenized.cuda()
