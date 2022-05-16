@@ -2,7 +2,6 @@ from transformers import LxmertTokenizer, LxmertModel
 import torch
 from src.models.LSTM import LSTMModel
 import os
-from datetime import datetime
 class LXMERT_LSTM(torch.nn.Module):
     def __init__(self, freeze_lxmert=True):
         super().__init__()
@@ -33,7 +32,6 @@ class LXMERT_LSTM(torch.nn.Module):
         output = self.LSTM(answer_embeddings, output)
         return output
     def save(self, dir_, epoch):
-        dir_ = os.path.join(dir_, str(datetime().now()))
         if not(os.path.exists(dir_)):
             os.makedirs(dir_, exist_ok=True)
         path = os.path.join(dir_, f"{self.name}.{epoch}.torch")

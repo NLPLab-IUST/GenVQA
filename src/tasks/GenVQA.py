@@ -6,8 +6,10 @@ from src.data.datasets import GenVQADataset, pad_batched_sequence
 import torch
 from src.logger import Instance as Logger
 from src.constants import CHECKPOINTS_DIR
+from datetime import datetime
+import os
 class VQA:
-    def __init__(self, train_dset,  model, val_dset=None, tokenizer=None, use_cuda=True, batch_size=32, epochs=200, lr=0.005, log_every=1):
+    def __init__(self, train_date, train_dset,  model, val_dset=None, tokenizer=None, use_cuda=True, batch_size=32, epochs=200, lr=0.005, log_every=1):
         
         self.train_loader = DataLoader(train_dset, batch_size=batch_size,
             shuffle=True, drop_last=True, collate_fn=pad_batched_sequence)
@@ -18,8 +20,9 @@ class VQA:
         if(use_cuda):
             self.model = self.model.cuda()
         self.criterion = nn.CrossEntropyLoss()
-
+        self.train_date_time = train_date
         self.optim = torch.optim.Adam(list(self.model.parameters()), lr=lr)
+        self.save_dir = os.path.join(CHECKPOINTS_DIR, str(self.train_date_time))
     def train(self):
         runnnin_loss = 0.0
         running_accuracy = 0.0
@@ -48,7 +51,7 @@ class VQA:
             if epoch % self.log_every == self.log_every - 1:
                 total_data_iterated = self.log_every * len(self.train_loader)
                 Logger.log("Train", f"Training epoch {epoch} with loss {runnnin_loss / self.log_every:.3f} with accuracy {running_accuracy / total_data_iterated:.3f}")
-                self.model.save(CHECKPOINTS_DIR, epoch)
+                self.model.save(self.save_dir, epoch)
                 runnnin_loss = 0.0
                 running_accuracy = 0.0
         
@@ -64,5 +67,5 @@ if __name__ == "__main__":
         annotations = "../fsvqa_data_train/annotations.pickle", 
         questions = "../fsvqa_data_train/questions.pickle", 
         img_dir = "../img_data")
-    vqa = VQA(dset, model)
+    vqa = VQA(datetime.now(), dset, model)
     vqa.train()
