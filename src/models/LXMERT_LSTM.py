@@ -1,7 +1,7 @@
 from transformers import LxmertTokenizer, LxmertModel
 import torch
 from src.models.LSTM import LSTMModel
-
+import os
 class LXMERT_LSTM(torch.nn.Module):
     def __init__(self, freeze_lxmert=True):
         super().__init__()
@@ -15,6 +15,7 @@ class LXMERT_LSTM(torch.nn.Module):
         
         self.embedding_layer = list(self.LXMERT.children())[0].word_embeddings
         self.LSTM = LSTMModel(output_size=self.Tokenizer.vocab_size)
+        self.name = "LXMERT_LSTM"
     def forward(self, input_ids, visual_feats, visual_pos, attention_mask, answer_tokenized):
         """
             Train phase forward propagation
@@ -30,3 +31,6 @@ class LXMERT_LSTM(torch.nn.Module):
         output = output.pooled_output
         output = self.LSTM(answer_embeddings, output)
         return output
+    def save(self, dir, epoch):
+        path = os.path.join(dir, f"{self.name}.{epoch}.torch")
+        torch.save(self.state_dict(), path)

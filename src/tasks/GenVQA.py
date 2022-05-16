@@ -5,6 +5,7 @@ from src.models import LXMERT_LSTM
 from src.data.datasets import GenVQADataset, pad_batched_sequence
 import torch
 from src.logger import Instance as Logger
+from src.constants import CHECKPOINTS_DIR
 class VQA:
     def __init__(self, train_dset,  model, val_dset=None, tokenizer=None, use_cuda=True, batch_size=32, epochs=200, lr=0.005):
         
@@ -31,6 +32,7 @@ class VQA:
                 runnnin_loss += loss.item()
             if epoch % 1 == 0:
                 Logger.log("Train", f"Training epoch {epoch} with loss {runnnin_loss / 1:.3f}")
+                self.model.save(CHECKPOINTS_DIR, epoch)
                 runnnin_loss = 0.0
         
                 
