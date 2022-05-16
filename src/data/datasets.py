@@ -1,7 +1,8 @@
 import pickle
 import os
 from torch.utils.data import Dataset
-
+from torch.nn.utils.rnn import pad_sequence
+import torch
 class GenVQADataset(Dataset):
     def __init__(self, tokenizer, annotations, questions, img_dir, batch_size=32):
         with open(annotations, 'rb') as f:
@@ -40,3 +41,18 @@ class GenVQADataset(Dataset):
         return input_ids, visual_feats, visual_pos, attention_mask, None
     def __len__(self):
         return len(self.annotations)
+
+def pad_batched_sequence(batch):
+    input_ids = [torch.tensor(item[0]) for item in batch]
+    visual_feats =  [torch.tensor(item[1]) for item in batch]
+    visual_pos =  [torch.tensor(item[2]) for item in batch]
+    attention_mask =  [torch.tensor(item[3]) for item in batch]
+    
+    input_ids = pad_sequence(input_ids, padding_value=0, batch_first=True)
+    attention_mask = pad_sequence(attention_mask, padding_value=0, batch_first=True)
+    label_tokenized = None
+    if batch[0][4]:
+        label_tokenized = [torch.tensor(item[4]) for item in batch]
+        label_tokenized = pad_sequence(label_tokenized, batch_first=True, padding_value=0)
+    
+    return input_ids, torch.stack(visual_feats, dim=0), torch.stack(visual_pos, dim=0), attention_mask, label_tokenized
