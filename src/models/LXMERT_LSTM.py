@@ -31,6 +31,8 @@ class LXMERT_LSTM(torch.nn.Module):
         output = output.pooled_output
         output = self.LSTM(answer_embeddings, output)
         return output
-    def save(self, dir, epoch):
-        path = os.path.join(dir, f"{self.name}.{epoch}.torch")
+    def save(self, dir_, epoch):
+        if not(os.path.exists(dir_)):
+            os.makedirs(dir_, exist_ok=True)
+        path = os.path.join(dir_, f"{self.name}.{epoch}.torch")
         torch.save(self.state_dict(), path)

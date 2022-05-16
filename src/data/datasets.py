@@ -36,9 +36,10 @@ class GenVQADataset(Dataset):
             a_text = answer['answer']
             tokenized_sentence = self.tokenizer(a_text)
             label_tokenized = tokenized_sentence['input_ids']
-            return input_ids, visual_feats, visual_pos, attention_mask, label_tokenized
+            label_masks = tokenized_sentence['attention_mask']
+            return input_ids, visual_feats, visual_pos, attention_mask, label_tokenized, label_masks
         
-        return input_ids, visual_feats, visual_pos, attention_mask, None
+        return input_ids, visual_feats, visual_pos, attention_mask, None, None
     def __len__(self):
         return len(self.annotations)
 
@@ -51,8 +52,11 @@ def pad_batched_sequence(batch):
     input_ids = pad_sequence(input_ids, padding_value=0, batch_first=True)
     attention_mask = pad_sequence(attention_mask, padding_value=0, batch_first=True)
     label_tokenized = None
+    label_masks = None
     if batch[0][4]:
         label_tokenized = [torch.tensor(item[4]) for item in batch]
-        label_tokenized = pad_sequence(label_tokenized, batch_first=True, padding_value=0)
+        label_masks = [torch.tensor(item[5]) for item in batch]
+        label_tokenized = pad_sequence(label_tokenized, batch_first=True, padding_value=0).cuda()
+        label_masks = pad_sequence(label_masks, batch_first=True, padding_value=0).cuda()
     
-    return input_ids.cuda(), torch.stack(visual_feats, dim=0).cuda(), torch.stack(visual_pos, dim=0).cuda(), attention_mask.cuda(), label_tokenized.cuda()
+    return input_ids.cuda(), torch.stack(visual_feats, dim=0).cuda(), torch.stack(visual_pos, dim=0).cuda(), attention_mask.cuda(), label_tokenized, label_masks

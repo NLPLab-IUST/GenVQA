@@ -13,6 +13,7 @@ class VQA:
             shuffle=True, drop_last=True, collate_fn=pad_batched_sequence)
         self.model = model
         self.epochs = epochs
+        self.batch_size = batch_size
         if(use_cuda):
             self.model = self.model.cuda()
         self.criterion = nn.CrossEntropyLoss()
@@ -20,8 +21,9 @@ class VQA:
         self.optim = torch.optim.Adam(list(self.model.parameters()), lr=lr)
     def train(self):
         runnnin_loss = 0.0
+        running_accuracy = 0.0
         for epoch in range(self.epochs):
-            for i, (input_ids, feats, boxes, masks, target) in enumerate(tqdm(self.train_loader, total=len(self.train_loader))):
+            for i, (input_ids, feats, boxes, masks, target, target_masks) in enumerate(tqdm(self.train_loader, total=len(self.train_loader))):
                 self.model.train()
                 self.optim.zero_grad()
                 logits = self.model(input_ids, feats, boxes, masks, target)
@@ -30,10 +32,16 @@ class VQA:
                 loss.backward()
                 self.optim.step()
                 runnnin_loss += loss.item()
+
+                #calculate accuracy
+                pred = torch.argmax(logits, dim=-1)
+                true_predictions = torch.sum((pred == target) * masks)
+                running_accuracy += true_predictions / self.batch_size
             if epoch % 1 == 0:
-                Logger.log("Train", f"Training epoch {epoch} with loss {runnnin_loss / 1:.3f}")
+                Logger.log("Train", f"Training epoch {epoch} with loss {runnnin_loss / 1:.3f} with accuracy {running_accuracy / 1:.3f}")
                 self.model.save(CHECKPOINTS_DIR, epoch)
                 runnnin_loss = 0.0
+                running_accuracy = 0.0
         
                 
 
