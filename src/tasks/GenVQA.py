@@ -53,8 +53,12 @@ class VQA:
                     val_acc /= len(self.val_loader)
 
                 total_data_iterated = self.log_every * len(self.train_loader)
-                Logger.log("Train", f"Training epoch {epoch}: train loss {runnnin_loss / self.log_every:.3f}. Val loss: {val_loss:.3f}."
-                + f" Train accuracy {running_accuracy / total_data_iterated:.3f}. Val accuracy: {val_acc}")
+                if(self.val_loader):
+                    Logger.log("Train", f"Training epoch {epoch}: Train loss {runnnin_loss / self.log_every:.3f}. Val loss: {val_loss:.3f}."
+                                + f" Train accuracy {running_accuracy / total_data_iterated:.3f}. Val accuracy: {val_acc}")
+                else:
+                    Logger.log("Train", f"Training epoch {epoch}: Train loss {runnnin_loss / self.log_every:.3f}."
+                                + f" Train accuracy {running_accuracy / total_data_iterated:.3f}.")
                 self.model.save(self.save_dir, epoch)
                 runnnin_loss = 0.0
                 running_accuracy = 0.0
@@ -90,5 +94,5 @@ if __name__ == "__main__":
         annotations = "../fsvqa_data_val/annotations.pickle", 
         questions = "../fsvqa_data_val/questions.pickle", 
         img_dir = "../img_data")
-    vqa = VQA(datetime.now(), train_dset, model, val_dset=val_dset)
+    vqa = VQA(datetime.now(), train_dset, model, val_dset=None)
     vqa.train()
