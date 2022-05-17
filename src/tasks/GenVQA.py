@@ -9,7 +9,15 @@ from src.constants import CHECKPOINTS_DIR
 from datetime import datetime
 import os
 class VQA:
-    def __init__(self, train_date, train_dset,  model, val_dset=None, tokenizer=None, use_cuda=True, batch_size=32, epochs=200, lr=0.005, log_every=1):
+    def __init__(self, train_date, train_dset,  model, 
+                val_dset=None, 
+                tokenizer=None, 
+                use_cuda=True, 
+                batch_size=32, 
+                epochs=200, 
+                lr=0.005, 
+                log_every=1, 
+                save_every=50):
         
         self.train_loader = DataLoader(train_dset, batch_size=batch_size,
             shuffle=True, drop_last=True, collate_fn=pad_batched_sequence)
@@ -27,6 +35,7 @@ class VQA:
         self.train_date_time = train_date
         self.optim = torch.optim.Adam(list(self.model.parameters()), lr=lr)
         self.save_dir = os.path.join(CHECKPOINTS_DIR, str(self.train_date_time))
+        self.save_every = save_every
 
     def train(self):
         runnnin_loss = 0.0
@@ -59,9 +68,11 @@ class VQA:
                 else:
                     Logger.log("Train", f"Training epoch {epoch}: Train loss {runnnin_loss / self.log_every:.3f}."
                                 + f" Train accuracy {running_accuracy / total_data_iterated:.3f}.")
-                self.model.save(self.save_dir, epoch)
                 runnnin_loss = 0.0
                 running_accuracy = 0.0
+            
+            if(epoch % self.save_every == self.save_every - 1):
+                self.model.save(self.save_dir, epoch)
     
     def __step(self, input_ids, feats, boxes, masks, target, target_masks, val=False):
         logits = self.model(input_ids, feats, boxes, masks, target)
@@ -93,6 +104,6 @@ if __name__ == "__main__":
     val_dset = GenVQADataset(model.Tokenizer, 
         annotations = "../fsvqa_data_val/annotations.pickle", 
         questions = "../fsvqa_data_val/questions.pickle", 
-        img_dir = "../img_data")
-    vqa = VQA(datetime.now(), train_dset, model, val_dset=None)
+        img_dir = "../val_img_data")
+    vqa = VQA(datetime.now(), train_dset, model, val_dset=val_dset)
     vqa.train()
