@@ -40,6 +40,7 @@ class VQA:
     def train(self):
         runnnin_loss = 0.0
         running_accuracy = 0.0
+        running_accuracy_best = 0
         for epoch in range(self.epochs):
             for i, (input_ids, feats, boxes, masks, target, target_masks) in enumerate(pbar := tqdm(self.train_loader, total=len(self.train_loader))):
                 self.model.train()
@@ -62,17 +63,25 @@ class VQA:
                     val_acc /= len(self.val_loader)
 
                 total_data_iterated = self.log_every * len(self.train_loader)
+                running_accuracy = running_accuracy / total_data_iterated
+
+                
                 if(self.val_loader):
                     Logger.log("Train", f"Training epoch {epoch}: Train loss {runnnin_loss / self.log_every:.3f}. Val loss: {val_loss:.3f}."
-                                + f" Train accuracy {running_accuracy / total_data_iterated:.3f}. Val accuracy: {val_acc}")
+                                + f" Train accuracy {running_accuracy:.3f}. Val accuracy: {val_acc:.3f}")
                 else:
                     Logger.log("Train", f"Training epoch {epoch}: Train loss {runnnin_loss / self.log_every:.3f}."
-                                + f" Train accuracy {running_accuracy / total_data_iterated:.3f}.")
+                                + f" Train accuracy {running_accuracy:.3f}.")
+                
+                if(running_accuracy > running_accuracy_best):
+                    self.model.save(self.save_dir, f"BEST")
+                    running_accuracy_best = running_accuracy
                 runnnin_loss = 0.0
                 running_accuracy = 0.0
             
             if(epoch % self.save_every == self.save_every - 1):
                 self.model.save(self.save_dir, epoch)
+            
     
     def __step(self, input_ids, feats, boxes, masks, target, target_masks, val=False):
         logits = self.model(input_ids, feats, boxes, masks, target)
