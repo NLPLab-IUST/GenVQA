@@ -31,7 +31,7 @@ class VQA:
             shuffle=False, drop_last=True, collate_fn=pad_batched_sequence)
         if(use_cuda):
             self.model = self.model.cuda()
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.NLLLoss(ignore_index=0, size_average=True)
         self.train_date_time = train_date
         self.optim = torch.optim.Adam(list(self.model.parameters()), lr=lr)
         self.save_dir = os.path.join(CHECKPOINTS_DIR, str(self.train_date_time))
@@ -84,17 +84,15 @@ class VQA:
             
     
     def __step(self, input_ids, feats, boxes, masks, target, target_masks, val=False):
-        logits = self.model(input_ids, feats, boxes, masks, target)
-        target_masks = target_masks.unsqueeze(2)
+        target_lens = torch.sum(target_masks, dim=1)
+        logits = self.model(input_ids, feats, boxes, masks, target, target_lens)
         target_labels = torch.nn.functional.one_hot(target, num_classes=self.model.Tokenizer.vocab_size).double()
-        logits = logits * target_masks
-        target_labels = target_labels*target_masks
         loss = self.criterion(logits, target_labels)
         if not(val):
             loss.backward()
             self.optim.step()
         pred = torch.argmax(logits, dim=-1)
-        true_predictions = torch.sum((pred == target) * target_masks.squeeze())
+        true_predictions = torch.sum((pred == target) * target_masks)
         batch_acc = true_predictions / (self.batch_size * torch.sum(target_masks))
         assert batch_acc <= 1
         return loss, batch_acc
