@@ -23,7 +23,7 @@ class LSTMModel(torch.nn.Module):
         """
         h0 = encoder_output.unsqueeze(0)
         c0 = torch.zeros(*h0.shape).cuda()
-        x = pack_padded_sequence(x, x_lens, batch_first=True)
+        x = pack_padded_sequence(x, x_lens.cpu(), batch_first=True, enforce_sorted=False)
         output, _ = self.LSTM(x, (h0, c0))
         output, _ = pad_packed_sequence(output, batch_first=True)
         output = self.Linear(output)

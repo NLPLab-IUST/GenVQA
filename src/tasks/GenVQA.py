@@ -86,8 +86,8 @@ class VQA:
     def __step(self, input_ids, feats, boxes, masks, target, target_masks, val=False):
         target_lens = torch.sum(target_masks, dim=1)
         logits = self.model(input_ids, feats, boxes, masks, target, target_lens)
-        target_labels = torch.nn.functional.one_hot(target, num_classes=self.model.Tokenizer.vocab_size).double()
-        loss = self.criterion(logits, target_labels)
+        target_one_hot = torch.nn.functional.one_hot(target, num_classes=self.model.Tokenizer.vocab_size).double()
+        loss = self.criterion(logits.permute(0, 2, 1), target)
         if not(val):
             loss.backward()
             self.optim.step()
