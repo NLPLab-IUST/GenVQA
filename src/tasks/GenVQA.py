@@ -37,7 +37,7 @@ class VQA:
         self.optim = torch.optim.Adam(list(self.model.parameters()), lr=lr)
         self.save_dir = os.path.join(CHECKPOINTS_DIR, str(self.train_date_time))
         self.save_every = save_every
-        self.f1_score = F1Score(num_classes=self.model.Tokenizer.vocab_size, ignore_index=0, top_k=1)
+        self.f1_score = F1Score(num_classes=self.model.Tokenizer.vocab_size, ignore_index=0, top_k=1, mdmc_average='samplewise')
     def train(self):
         runnnin_loss = 0.0
         running_accuracy = 0.0
@@ -74,11 +74,11 @@ class VQA:
 
                 
                 if(self.val_loader):
-                    Logger.log("Train", f"Training epoch {epoch}: Train loss {runnnin_loss / self.log_every:.3f}. Val loss: {val_loss:.3f}."
+                    Logger.log(f"Train_{self.train_date_time}", f"Training epoch {epoch}: Train loss {runnnin_loss / self.log_every:.3f}. Val loss: {val_loss:.3f}."
                                 + f" Train accuracy {running_accuracy:.3f}. Val accuracy: {val_acc:.3f}. Train F1-Score: {running_f1}. Validation F1-Score: {val_f1}")
                     print(f"F1 Score: Train {running_f1}, Validation: {val_f1}")
                 else:
-                    Logger.log("Train", f"Training epoch {epoch}: Train loss {runnnin_loss / self.log_every:.3f}."
+                    Logger.log(f"Train_{self.train_date_time}", f"Training epoch {epoch}: Train loss {runnnin_loss / self.log_every:.3f}."
                                 + f" Train accuracy {running_accuracy:.3f}. Train F1-Score: {running_f1}")
                     print(f"F1 Score: Train {running_f1}")
 
