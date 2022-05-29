@@ -17,11 +17,14 @@ class GenVQADataset(Dataset):
         dataum = self.annotations[idx]
         q = self.questions[dataum['question_id']]
         img_path = os.path.join(self.img_dir, f"{dataum['img_id']}.pickle")
+        
         with open(img_path, 'rb') as f:
             img = pickle.load(f)
+        # extract sentence data
         tokenized_sentence = self.tokenizer(q['question'])
         input_ids = tokenized_sentence['input_ids']
         attention_mask = tokenized_sentence['attention_mask']
+        # extract image data
         visual_feats = img['features']
         boxes = img['boxes']
         img_h, img_w = img['img_h'], img['img_w']
@@ -44,6 +47,7 @@ class GenVQADataset(Dataset):
         return len(self.annotations)
 
 def pad_batched_sequence(batch):
+    
     input_ids = [torch.tensor(item[0]) for item in batch]
     visual_feats =  [torch.tensor(item[1]) for item in batch]
     visual_pos =  [torch.tensor(item[2]) for item in batch]
@@ -53,6 +57,7 @@ def pad_batched_sequence(batch):
     attention_mask = pad_sequence(attention_mask, padding_value=0, batch_first=True)
     label_tokenized = None
     label_masks = None
+    
     if batch[0][4]:
         #Ignore statrt idx
         label_tokenized = [torch.tensor(item[4][1:]) for item in batch]

@@ -16,6 +16,8 @@ class LXMERT_LSTM(torch.nn.Module):
         self.embedding_layer = list(self.LXMERT.children())[0].word_embeddings
         self.LSTM = LSTMModel(output_size=self.Tokenizer.vocab_size)
         self.name = "LXMERT_LSTM"
+
+    
     def forward(self, input_ids, visual_feats, visual_pos, attention_mask, answer_tokenized, target_lens):
         """
             Train phase forward propagation
@@ -29,8 +31,12 @@ class LXMERT_LSTM(torch.nn.Module):
         answer_embeddings = self.embedding_layer(answer_tokenized)
         output = self.LXMERT(**kwargs)
         output = output.pooled_output
+        
         output = self.LSTM(answer_embeddings, output, target_lens)
+
         return output
+
+
     def save(self, dir_, epoch):
         if not(os.path.exists(dir_)):
             os.makedirs(dir_, exist_ok=True)
