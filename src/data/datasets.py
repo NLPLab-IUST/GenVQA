@@ -43,6 +43,7 @@ class GenVQADataset(Dataset):
             return input_ids, visual_feats, visual_pos, attention_mask, label_tokenized, label_masks
         
         return input_ids, visual_feats, visual_pos, attention_mask, None, None
+    
     def __len__(self):
         return len(self.annotations)
 
@@ -62,7 +63,7 @@ def pad_batched_sequence(batch):
         #Ignore statrt idx
         label_tokenized = [torch.tensor(item[4][1:]) for item in batch]
         label_masks = [torch.tensor(item[5][1:]) for item in batch]
-        label_tokenized = pad_sequence(label_tokenized, batch_first=True, padding_value=0).cuda()
-        label_masks = pad_sequence(label_masks, batch_first=True, padding_value=0).cuda()
+        label_tokenized = pad_sequence(label_tokenized, batch_first=False, padding_value=0).cuda()
+        label_masks = pad_sequence(label_masks, batch_first=False, padding_value=0).cuda()
     
     return input_ids.cuda(), torch.stack(visual_feats, dim=0).cuda(), torch.stack(visual_pos, dim=0).cuda(), attention_mask.cuda(), label_tokenized, label_masks
