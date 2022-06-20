@@ -1,10 +1,10 @@
-
 import torch
 import torch.nn as nn
-from torch.nn import LSTM
-from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
-class LSTMModel(torch.nn.Module):
-    def __init__(self,embedding, input_size=768, hidden_size=768, output_size=768, num_layers=1, bidirectional=False, p=0.5):
+from torch.nn import GRU, LSTM
+
+
+class RNNModel(torch.nn.Module):
+    def __init__(self, embedding, rnn_type="lstm", input_size=768, hidden_size=768, output_size=768, num_layers=1, bidirectional=False, p=0.5):
         super().__init__()
         self.embedding = embedding
         self.hidden_size = hidden_size
@@ -14,11 +14,15 @@ class LSTMModel(torch.nn.Module):
         self.bidirectional = bidirectional
         
         self.dropout = nn.Dropout(p)
-        self.LSTM = LSTM(input_size=input_size, hidden_size=self.hidden_size, 
-                         bidirectional=self.bidirectional, 
-                         num_layers=self.num_layers, dropout = p)
+        if rnn_type=="lstm":
+            self.rnn = LSTM(input_size=input_size, hidden_size=self.hidden_size, 
+                            bidirectional=self.bidirectional, 
+                            num_layers=self.num_layers, dropout = p)
+        elif rnn_type=="gru":
+            self.rnn = GRU(input_size=input_size, hidden_size=self.hidden_size, 
+                            bidirectional=self.bidirectional, 
+                            num_layers=self.num_layers, dropout = p)
         self.Linear = nn.Linear(self.hidden_size, output_size)
-        # self.log_softmax = nn.LogSoftmax(dim=-1)
     
     def forward(self, x, hidden, cell):
         """
@@ -29,7 +33,7 @@ class LSTMModel(torch.nn.Module):
         embedding = self.dropout(self.embedding(x))
         # embedding shape: (1, N, embedding_size)
         
-        outputs, (hidden, cell) = self.LSTM(embedding, (hidden, cell))
+        outputs, (hidden, cell) = self.rnn(embedding, (hidden, cell))
         # outputs shape: (1, N, hidden_size)
         
         predictions = self.Linear(outputs)

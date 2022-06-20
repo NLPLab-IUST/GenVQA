@@ -1,11 +1,14 @@
-from transformers import LxmertTokenizer, LxmertModel
-import torch
-from src.models.LSTM import LSTMModel
 import os
 import random
 
-class LXMERT_LSTM(torch.nn.Module):
-    def __init__(self, freeze_lxmert=True):
+import torch
+from transformers import LxmertModel, LxmertTokenizer
+
+from models.RNN import RNNModel
+
+
+class LXMERT_RNN(torch.nn.Module):
+    def __init__(self, rnn_type = "lstm", num_layers=1, bidirectional=False, p=0.5, freeze_lxmert=True):
         super().__init__()
         self.LXMERT = LxmertModel.from_pretrained("unc-nlp/lxmert-base-uncased")
         self.Tokenizer = LxmertTokenizer.from_pretrained("unc-nlp/lxmert-base-uncased")
@@ -16,8 +19,15 @@ class LXMERT_LSTM(torch.nn.Module):
                 p.requires_grad = False
         
         embedding_layer = list(self.LXMERT.children())[0].word_embeddings
-        self.LSTM = LSTMModel(embedding=embedding_layer, output_size=self.Tokenizer.vocab_size)
-        self.name = "LXMERT_LSTM"
+        self.rnn = RNNModel(embedding=embedding_layer,
+                             output_size=self.Tokenizer.vocab_size,
+                             rnn_type=rnn_type,
+                             num_layers=num_layers,
+                             bidirectional=bidirectional,
+                             p=p)
+        
+        self.name = f"LXMERT_{rnn_type}_{num_layers}"
+        self.name = f"{self.name}_bidirectional" if bidirectional else self.name
 
     
     def forward(self, input_ids, visual_feats, visual_pos, attention_mask, answer_tokenized, teacher_force_ratio=0.5):
@@ -45,9 +55,9 @@ class LXMERT_LSTM(torch.nn.Module):
         # just gonna expand it.
         # D = 2 if bidirectional=True otherwise 1
         
-        D = 2 if self.LSTM.bidirectional==True else 1
+        D = 2 if self.rnn.bidirectional==True else 1
         
-        hidden = encoder_output.expand(D*self.LSTM.num_layers, -1, -1)
+        hidden = encoder_output.expand(D*self.rnn.num_layers, -1, -1)
         # hidden shape: (D*num_layers, N, hidden_size)
         cell = torch.zeros(*hidden.shape).cuda()
         
@@ -56,7 +66,7 @@ class LXMERT_LSTM(torch.nn.Module):
         
         for t in range(1, target_len):
             # Use previous hidden, cell as context from encoder at start
-            output, hidden, cell = self.LSTM(x, hidden, cell)
+            output, hidden, cell = self.rnn(x, hidden, cell)
 
             # Store next output prediction
             outputs[t] = output

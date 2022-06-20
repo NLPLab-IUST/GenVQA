@@ -1,14 +1,16 @@
+import argparse
+from ast import arg
 import os
 from datetime import datetime
 
 import torch
 import torch.nn as nn
+from models import LXMERT_RNN
 from src.constants import CHECKPOINTS_DIR
 from src.data.datasets import GenVQADataset, pad_batched_sequence
 from src.logger import Instance as Logger
-from src.models import LXMERT_LSTM
 from torch.utils.data.dataloader import DataLoader
-from torchmetrics import F1Score, Accuracy
+from torchmetrics import Accuracy, F1Score
 from tqdm import tqdm
 
 
@@ -124,12 +126,21 @@ class VQA:
         return loss, batch_acc, f1_score
                 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--rnn_type", default="lstm", type=str)
+    parser.add_argument("--num_rnn-layers", default=1, type=int)
+    parser.add_argument("--bidirection", default=False, type=bool)
+    
+    return parser.parse_args()
 
 
 
 
 if __name__ == "__main__":
-    model = LXMERT_LSTM.LXMERT_LSTM()
+    args = parse_args()
+    model = LXMERT_RNN.LXMERT_RNN(rnn_type=args.rnn_type, num_layers=args.num_rnn_layers, bidirectional=args.bidirectional)
     train_dset = GenVQADataset(model.Tokenizer, 
         annotations = "../fsvqa_data_train/annotations.pickle", 
         questions = "../fsvqa_data_train/questions.pickle", 
@@ -138,5 +149,5 @@ if __name__ == "__main__":
         annotations = "../fsvqa_data_val/annotations.pickle", 
         questions = "../fsvqa_data_val/questions.pickle", 
         img_dir = "../val_img_data")
-    vqa = VQA(datetime.now(),model, train_dset, val_dset=val_dset)
+    vqa = VQA(datetime.now() ,model, train_dset, val_dset=val_dset)
     vqa.train()
