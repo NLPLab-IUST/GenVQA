@@ -5,7 +5,7 @@ from datetime import datetime
 
 import torch
 import torch.nn as nn
-from models import LXMERT_RNN
+from src.models import LXMERT_RNN
 from src.constants import CHECKPOINTS_DIR
 from src.data.datasets import GenVQADataset, pad_batched_sequence
 from src.logger import Instance as Logger
@@ -131,7 +131,7 @@ def parse_args():
 
     parser.add_argument("--rnn_type", default="lstm", type=str)
     parser.add_argument("--num_rnn-layers", default=1, type=int)
-    parser.add_argument("--bidirection", default=False, type=bool)
+    parser.add_argument("--bidirectional", default=False, action="store_true")
     
     return parser.parse_args()
 
@@ -140,7 +140,10 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    model = LXMERT_RNN.LXMERT_RNN(rnn_type=args.rnn_type, num_layers=args.num_rnn_layers, bidirectional=args.bidirectional)
+    model = LXMERT_RNN.LXMERT_RNN(rnn_type=args.rnn_type, 
+                                  num_layers=args.num_rnn_layers, 
+                                  bidirectional=args.bidirectional)
+    
     train_dset = GenVQADataset(model.Tokenizer, 
         annotations = "../fsvqa_data_train/annotations.pickle", 
         questions = "../fsvqa_data_train/questions.pickle", 

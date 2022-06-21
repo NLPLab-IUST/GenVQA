@@ -4,11 +4,11 @@ import random
 import torch
 from transformers import LxmertModel, LxmertTokenizer
 
-from models.RNN import RNNModel
+from src.models.RNN import RNNModel
 
 
 class LXMERT_RNN(torch.nn.Module):
-    def __init__(self, rnn_type = "lstm", num_layers=1, bidirectional=False, p=0.5, freeze_lxmert=True):
+    def __init__(self, rnn_type = "lstm", num_layers=1, bidirectional=False, prob=0.5, freeze_lxmert=True):
         super().__init__()
         self.LXMERT = LxmertModel.from_pretrained("unc-nlp/lxmert-base-uncased")
         self.Tokenizer = LxmertTokenizer.from_pretrained("unc-nlp/lxmert-base-uncased")
@@ -17,18 +17,17 @@ class LXMERT_RNN(torch.nn.Module):
         if freeze_lxmert:
             for p in self.LXMERT.parameters():
                 p.requires_grad = False
-        
+                
         embedding_layer = list(self.LXMERT.children())[0].word_embeddings
         self.rnn = RNNModel(embedding=embedding_layer,
-                             output_size=self.Tokenizer.vocab_size,
-                             rnn_type=rnn_type,
-                             num_layers=num_layers,
-                             bidirectional=bidirectional,
-                             p=p)
+                            rnn_type=rnn_type,  
+                            output_size=self.Tokenizer.vocab_size, 
+                            num_layers=num_layers, 
+                            bidirectional=bidirectional, 
+                            prob=prob)
         
         self.name = f"LXMERT_{rnn_type}_{num_layers}"
         self.name = f"{self.name}_bidirectional" if bidirectional else self.name
-
     
     def forward(self, input_ids, visual_feats, visual_pos, attention_mask, answer_tokenized, teacher_force_ratio=0.5):
         """
@@ -57,29 +56,34 @@ class LXMERT_RNN(torch.nn.Module):
         
         D = 2 if self.rnn.bidirectional==True else 1
         
-        hidden = encoder_output.expand(D*self.rnn.num_layers, -1, -1)
-        # hidden shape: (D*num_layers, N, hidden_size)
-        cell = torch.zeros(*hidden.shape).cuda()
+        h = encoder_output.expand(D*self.rnn.num_layers, -1, -1)
+        # h shape: (D*num_layers, N, hidden_size)
         
+        if self.rnn.rnn_type == 'lstm':
+            c = torch.zeros(*h.shape).cuda()
+            hidden = (h.contiguous(),c.contiguous())
+        elif self.rnn.rnn_type == 'gru':
+            hidden = h.contiguous()
+            
         # Grab the first input to the Decoder which will be <SOS> token
         x = answer_tokenized[0]
         
         for t in range(1, target_len):
-            # Use previous hidden, cell as context from encoder at start
-            output, hidden, cell = self.rnn(x, hidden, cell)
+            # Use previous hidden context from encoder at start
+            output, hidden = self.rnn(x, hidden)
 
             # Store next output prediction
             outputs[t] = output
 
-            # Get the best word the Decoder predicted (index in the vocabulary)
+            # Get the best word the decoder predicted (index in the vocabulary)
             best_guess = output.argmax(1)
 
             # With probability of teacher_force_ratio we take the actual next word
-            # otherwise we take the word that the Decoder predicted it to be.
+            # otherwise we take the word that the decoder predicted it to be.
             # Teacher Forcing is used so that the model gets used to seeing
             # similar inputs at training and testing time, if teacher forcing is 1
             # then inputs at test time might be completely different than what the
-            # network is used to. This was a long comment.
+            # network is used to.
             x = answer_tokenized[t] if random.random() < teacher_force_ratio else best_guess
 
         return outputs
