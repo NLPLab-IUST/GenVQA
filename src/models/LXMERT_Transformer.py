@@ -55,10 +55,10 @@ class LXMERT_Transformer(nn.Module):
 
 
         # target masks to consider padding values in target embeddings (answers)
-        tgt_key_padding_mask = (answer_tokenized.permute(1, 0) == 0)
+        tgt_key_padding_mask = (answer_tokenized.permute(1, 0) == self.PADDING_VALUE)
         
         # memory masks to consider padding values in source sentence (questions)
-        memory_key_padding_mask = (input_ids == 0)
+        memory_key_padding_mask = (input_ids == self.PADDING_VALUE)
 
         # target attention masks to avoid future tokens in our predictions
         # Adapted from PyTorch source code:
