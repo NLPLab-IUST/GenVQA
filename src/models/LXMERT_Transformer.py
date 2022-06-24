@@ -43,20 +43,30 @@ class LXMERT_Transformer(nn.Module):
         
         tgt_len = answer_tokenized.shape[0]
         
-        #encoder
+        # encode question and image with lxmert
         output = self.LXMERT(**kwargs)
         encoder_output = output.language_hidden_states[-1].permute(1, 0, 2)
         # encoder_output shape: (seq_len, N, hidden_size) to send it to
         
         
         answer_embeddings = self.embedding_layer(answer_tokenized)
-        
-        #create mask tensor to ignore paddings during calcualtion
+        # answer embeddings shape: (seq_len, N, embedding_size)
+        # embedding_size is 768 in LXMERT
+
+
+        # target masks to consider padding values in target embeddings (answers)
         tgt_key_padding_mask = (answer_tokenized.permute(1, 0) == 0)
+        
+        # memory masks to consider padding values in source sentence (questions)
         memory_key_padding_mask = (input_ids == 0)
+
+        # target attention masks to avoid future tokens in our predictions
+        # Adapted from PyTorch source code:
+        # https://github.com/pytorch/pytorch/blob/176174a68ba2d36b9a5aaef0943421682ecc66d4/torch/nn/modules/transformer.py#L130
         tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt_len).cuda()        
         
-        #decode encoder output and generate output sentence
+
+        # decode sentence and lxmert output to generate answer
         output = self.Decoder( answer_embeddings, 
                                encoder_output,
                                tgt_mask=tgt_mask,
@@ -69,5 +79,9 @@ class LXMERT_Transformer(nn.Module):
 
         return self.LogSoftmax(output)
 
-
+    def save(self, dir_, epoch):
+        if not(os.path.exists(dir_)):
+            os.makedirs(dir_, exist_ok=True)
+        path = os.path.join(dir_, f"{self.name}.{epoch}.torch")
+        torch.save(self.state_dict(), path)
 
