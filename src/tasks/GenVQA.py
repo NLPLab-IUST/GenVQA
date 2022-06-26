@@ -106,8 +106,9 @@ class VQA:
                 self.model.save(self.save_dir, epoch)
             
     
-    def __step(self, input_ids, feats, boxes, masks, target, target_masks, val=False):        
-        logits = self.model(input_ids, feats, boxes, masks, target)
+    def __step(self, input_ids, feats, boxes, masks, target, target_masks, val=False): 
+        teacher_force_ratio = 0 if val else 0.5       
+        logits = self.model(input_ids, feats, boxes, masks, target, teacher_force_ratio)
         # logits shape: (L, N, target_vocab_size)
         loss = self.criterion(logits.permute(1, 2, 0), target.permute(1,0))
 
@@ -125,7 +126,6 @@ class VQA:
         assert batch_acc <= 1
         return loss, batch_acc, f1_score
                 
-
 def parse_args():
     parser = argparse.ArgumentParser()
     
