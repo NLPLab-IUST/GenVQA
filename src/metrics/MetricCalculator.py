@@ -44,7 +44,7 @@ class MetricCalculator():
         for key in metrics:
             result[key] = metrics[key].compute(predictions=preds, references=references)
 
-        result['bertscore'] = bert_score(preds, references) 
+        #result['bertscore'] = bert_score(preds, references) 
 
 
         return result
