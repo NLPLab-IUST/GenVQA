@@ -6,7 +6,8 @@ from datetime import datetime
 import torch
 import torch.nn as nn
 from src.models import LXMERT_RNN
-from src.constants import CHECKPOINTS_DIR
+from src.models import LXMERT_Transformer
+from src.constants import CHECKPOINTS_DIR, LXMERT_HIDDEN_SIZE
 from src.data.datasets import GenVQADataset, pad_batched_sequence
 from src.logger import Instance as Logger
 from torch.utils.data.dataloader import DataLoader
@@ -128,11 +129,19 @@ class VQA:
 
 def parse_args():
     parser = argparse.ArgumentParser()
-
-    parser.add_argument("--rnn_type", default="lstm", type=str)
-    parser.add_argument("--num_rnn-layers", default=1, type=int)
-    parser.add_argument("--bidirectional", default=False, action="store_true")
     
+    #specify decoder type, options: rnn, transformer
+    parser.add_argument("--decoder_type", default="rnn", type=str)
+
+    #RNN specifications
+    parser.add_argument("--rnn_type", default="lstm", type=str)
+    parser.add_argument("--num_rnn_layers", default=1, type=int)
+    parser.add_argument("--bidirectional", default=False, action="store_true")
+
+    #Transformer specifications
+    parser.add_argument("--nheads", default=12, type=int)
+    parser.add_argument("--num_transformer_layers", default=6, type=int)
+
     return parser.parse_args()
 
 
@@ -140,10 +149,18 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    model = LXMERT_RNN.LXMERT_RNN(rnn_type=args.rnn_type, 
-                                  num_layers=args.num_rnn_layers, 
-                                  bidirectional=args.bidirectional)
+    model = None
+    if (args.decoder_type.lower() == 'rnn'):
+        model = LXMERT_RNN.LXMERT_RNN(rnn_type=args.rnn_type, 
+                                    num_layers=args.num_rnn_layers, 
+                                    bidirectional=args.bidirectional)
     
+    elif (args.decoder_type.lower() == 'transformer'):
+        model = LXMERT_Transformer.LXMERT_Transformer(
+                                    args.nheads, 
+                                    args.num_transformer_layers, 
+                                    LXMERT_HIDDEN_SIZE).cuda()
+                            
     train_dset = GenVQADataset(model.Tokenizer, 
         annotations = "../fsvqa_data_train/annotations.pickle", 
         questions = "../fsvqa_data_train/questions.pickle", 
@@ -152,5 +169,7 @@ if __name__ == "__main__":
         annotations = "../fsvqa_data_val/annotations.pickle", 
         questions = "../fsvqa_data_val/questions.pickle", 
         img_dir = "../val_img_data")
-    vqa = VQA(datetime.now() ,model, train_dset, val_dset=val_dset)
-    vqa.train()
+    
+    if model:
+        vqa = VQA(datetime.now() ,model, train_dset, val_dset=val_dset)
+        vqa.train()
