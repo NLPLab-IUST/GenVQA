@@ -29,7 +29,6 @@ class AverageScore(EmbeddingBaseMetric):
         Compute Average on sentence level.
         :param hypothesis_sentences:
         :param reference_sentences:
-        :param embedding_layer: embedding_layer of BERTBased model.
         :return:
         """
         return self._cos_sim(
@@ -43,7 +42,6 @@ class AverageScore(EmbeddingBaseMetric):
         Compute Average on corpus level.
         :param hypothesis_corpus:
         :param reference_corpus:
-        :param embedding_layer:
         :return:
         """
         assert len(hypothesis_corpus) == len(reference_corpus)

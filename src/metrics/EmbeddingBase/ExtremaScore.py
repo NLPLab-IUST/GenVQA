@@ -28,7 +28,6 @@ class ExtremaScore(EmbeddingBaseMetric):
         Compute Extrema on sentence level.
         :param hypothesis_sentence:
         :param reference_sentence:
-        :param embedding_layer:
         :return:
         """
         hypothesis = self.embedding_layer(hypothesis_sentence)
@@ -45,7 +44,6 @@ class ExtremaScore(EmbeddingBaseMetric):
         Compute Extrema on corpus level.
         :param hypothesis_corpus:
         :param reference_corpus:
-        :param embedding_layer:
         :return:
         """
         scores = []

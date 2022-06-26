@@ -41,7 +41,6 @@ class GreedyMatchingScore(EmbeddingBaseMetric):
         Compute Greedy Matching on sentence level.
         :param hypothesis_sentence:
         :param reference_sentence:
-        :param embedding_layer:
         :return:
         """
         hyp = self.embedding_layer(hypothesis_sentence)
@@ -55,7 +54,6 @@ class GreedyMatchingScore(EmbeddingBaseMetric):
         Compute Greedy Matching on corpus level.
         :param hypothesis_corpus:
         :param reference_corpus:
-        :param embedding_layer:
         :return:
         """
         scores = []
