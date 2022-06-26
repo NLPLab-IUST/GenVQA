@@ -1,15 +1,14 @@
 import argparse
-from ast import arg
 import os
+from ast import arg
 from datetime import datetime
 
 import torch
 import torch.nn as nn
-from src.models import LXMERT_RNN
-from src.models import LXMERT_Transformer
 from src.constants import CHECKPOINTS_DIR, LXMERT_HIDDEN_SIZE
 from src.data.datasets import GenVQADataset, pad_batched_sequence
 from src.logger import Instance as Logger
+from src.models import LXMERT_RNN, LXMERT_Transformer, LXMERT_AttnRNN
 from torch.utils.data.dataloader import DataLoader
 from torchmetrics import Accuracy, F1Score
 from tqdm import tqdm
@@ -130,14 +129,19 @@ class VQA:
 def parse_args():
     parser = argparse.ArgumentParser()
     
-    #specify decoder type, options: rnn, transformer
+    #specify decoder type, options: rnn, attn-rnn, transformer, 
     parser.add_argument("--decoder_type", default="rnn", type=str)
 
     #RNN specifications
-    parser.add_argument("--rnn_type", default="lstm", type=str)
+    parser.add_argument("--rnn_type", default="lstm", type=str) #options: lstm, gru
     parser.add_argument("--num_rnn_layers", default=1, type=int)
     parser.add_argument("--bidirectional", default=False, action="store_true")
-
+    
+    # Attention RNN specifications
+    parser.add_argument("--attn_type", default="bahdanau", type=str) #options: bahdanau, luong
+    # use only when attention type is luong
+    parser.add_argument("--attn_method", default="dot", type=str) #options: dot, general, concat
+    
     #Transformer specifications
     parser.add_argument("--nheads", default=12, type=int)
     parser.add_argument("--num_transformer_layers", default=6, type=int)
@@ -160,7 +164,12 @@ if __name__ == "__main__":
                                     args.nheads, 
                                     args.num_transformer_layers, 
                                     LXMERT_HIDDEN_SIZE).cuda()
-                            
+        
+    elif(args.decoder_type.lower() == 'attn-rnn'):
+        model = LXMERT_AttnRNN.LXMERT_AttnRNN(rnn_type=args.rnn_type,
+                                              attn_type = args.attn_type,
+                                              attn_method=args.attn_method)
+                                   
     train_dset = GenVQADataset(model.Tokenizer, 
         annotations = "../fsvqa_data_train/annotations.pickle", 
         questions = "../fsvqa_data_train/questions.pickle", 
