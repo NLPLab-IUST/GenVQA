@@ -3,7 +3,7 @@ import evaluate
 from src.metrics.EmbeddingBase.AverageScore import AverageScore
 from src.metrics.EmbeddingBase.ExtremaScore import ExtremaScore
 from src.metrics.EmbeddingBase.GreedyMatchingScore import GreedyMatchingScore
-
+from src.metrics.cider.cider import Cider
 #!pip install evaluate
 #!pip install rouge_score
 #!pip install bert_score
@@ -22,8 +22,9 @@ class MetricCalculator():
         }
 
         result = {}
-        preds_tokenized = [self.tokenizer(pred, return_tensors="pt")['input_ids'].squeeze() for pred in preds]
-        ref_tokenized = [self.tokenizer(ref, return_tensors="pt")['input_ids'].squeeze() for ref in references]
+        # tokenize inputs, we have to ignore [SEP] , [START] tokens. 
+        preds_tokenized = [self.tokenizer(pred, return_tensors="pt")['input_ids'].squeeze()[1:-1] for pred in preds]
+        ref_tokenized = [self.tokenizer(ref, return_tensors="pt")['input_ids'].squeeze()[1:-1] for ref in references]
 
         for key in metrics:
             result[key] = metrics[key].compute(preds_tokenized, ref_tokenized)
@@ -36,15 +37,21 @@ class MetricCalculator():
             #rouge.compute(predictions=preds, references=target)
             'rougeL' : evaluate.load('rouge'),
             #meteor.compute(predictions=preds, references=target)
-            'meteor' : evaluate.load('meteor'),            
+            'meteor' : evaluate.load('meteor'),
         }
         
         for key in metrics:
             result[key] = metrics[key].compute(predictions=preds, references=references)
         
+        #compute BERTScore
         bert_score = evaluate.load("bertscore")
         result['bertscore'] =  bert_score.compute(predictions = preds, references = references, lang='en')
 
+        #compute CIDEr, convert tokenized tensors to tokenized lists
+        cider = Cider()
+        preds_tokenized = [p.tolist() for p in preds_tokenized]
+        refs_tokenized = [r.tolist() for r in ref_tokenized]
+        result[cider.method()] = cider.compute_score(preds_tokenized, refs_tokenized)
 
         return result
 
@@ -60,4 +67,4 @@ if __name__ == '__main__':
     mc = MetricCalculator(tokenizer, E)
     preds = ['the cat is on the mat', 'the cat is on the mat']
     target = ['there is a catty on the matew', 'a cat is on the mat']
-    mc.compute(preds, target)
+    print(mc.compute(preds, target))
