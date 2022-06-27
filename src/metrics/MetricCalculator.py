@@ -1,13 +1,12 @@
 import torch
 import evaluate
-from torchmetrics.functional.text.bert import bert_score
 from src.metrics.EmbeddingBase.AverageScore import AverageScore
 from src.metrics.EmbeddingBase.ExtremaScore import ExtremaScore
 from src.metrics.EmbeddingBase.GreedyMatchingScore import GreedyMatchingScore
 
 #!pip install evaluate
 #!pip install rouge_score
-
+#!pip install bert_score
 
 class MetricCalculator():
     def __init__(self, tokenizer, embedding_layer) -> None:
@@ -37,14 +36,14 @@ class MetricCalculator():
             #rouge.compute(predictions=preds, references=target)
             'rougeL' : evaluate.load('rouge'),
             #meteor.compute(predictions=preds, references=target)
-            'meteor' : evaluate.load('meteor'),
-            
+            'meteor' : evaluate.load('meteor'),            
         }
         
         for key in metrics:
             result[key] = metrics[key].compute(predictions=preds, references=references)
-
-        #result['bertscore'] = bert_score(preds, references) 
+        
+        bert_score = evaluate.load("bertscore")
+        result['bertscore'] =  bert_score.compute(predictions = preds, references = references, lang='en')
 
 
         return result
