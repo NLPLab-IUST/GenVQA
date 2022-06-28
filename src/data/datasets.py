@@ -11,7 +11,7 @@ class GenVQADataset(Dataset):
             self.questions = pickle.load(f)
         self.img_dir = img_dir
         self.tokenizer = tokenizer
-        self.batch_size = 32
+        self.batch_size = batch_size
 
     def __getitem__(self, idx):
         dataum = self.annotations[idx]
