@@ -2,7 +2,8 @@ import argparse
 import os
 from ast import arg
 from datetime import datetime
-
+import random 
+import numpy as np
 import torch
 import torch.nn as nn
 from src.models import Encoder_AttnRNN, Encoder_RNN, Encoder_Transformer
@@ -133,7 +134,9 @@ class VQA:
                 
 def parse_args():
     parser = argparse.ArgumentParser()
-    
+    #specify seed for reproducing
+    parser.add_argument("--seed", default=8956, type=int)
+
     #specify encoder type, options: lxmert, visualbert 
     parser.add_argument("--encoder_type", default="rnn", type=str)
     
@@ -161,6 +164,11 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
+
+    torch.manual_seed(args.seed)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+
     model = None
     if (args.decoder_type.lower() == 'rnn'):
         model = Encoder_RNN.Encoder_RNN(encoder_type=args.encoder_type,
@@ -190,5 +198,5 @@ if __name__ == "__main__":
         img_dir = "../val_img_data")
     
     if model:
-        vqa = VQA(datetime.now() ,model, train_dset, val_dset=val_dset)
+        vqa = VQA(datetime.now() , model, train_dset, val_dset=val_dset)
         vqa.train()
