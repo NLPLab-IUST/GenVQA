@@ -5,10 +5,10 @@ from datetime import datetime
 
 import torch
 import torch.nn as nn
+from src.models import Encoder_AttnRNN, Encoder_RNN, Encoder_Transformer
 from src.constants import CHECKPOINTS_DIR, LXMERT_HIDDEN_SIZE
 from src.data.datasets import GenVQADataset, pad_batched_sequence
 from src.logger import Instance as Logger
-from src.models import LXMERT_RNN, LXMERT_Transformer, LXMERT_AttnRNN
 from torch.utils.data.dataloader import DataLoader
 from torchmetrics import Accuracy, F1Score
 from tqdm import tqdm
@@ -134,9 +134,12 @@ class VQA:
 def parse_args():
     parser = argparse.ArgumentParser()
     
-    #specify decoder type, options: rnn, attn-rnn, transformer, 
+    #specify encoder type, options: lxmert, visualbert 
+    parser.add_argument("--encoder_type", default="rnn", type=str)
+    
+    #specify decoder type, options: rnn, attn-rnn 
     parser.add_argument("--decoder_type", default="rnn", type=str)
-
+    
     #RNN specifications
     parser.add_argument("--rnn_type", default="lstm", type=str) #options: lstm, gru
     parser.add_argument("--num_rnn_layers", default=1, type=int)
@@ -160,20 +163,22 @@ if __name__ == "__main__":
     args = parse_args()
     model = None
     if (args.decoder_type.lower() == 'rnn'):
-        model = LXMERT_RNN.LXMERT_RNN(rnn_type=args.rnn_type, 
-                                    num_layers=args.num_rnn_layers, 
-                                    bidirectional=args.bidirectional)
+        model = Encoder_RNN.Encoder_RNN(encoder_type=args.encoder_type,
+                                        rnn_type=args.rnn_type, 
+                                        num_layers=args.num_rnn_layers, 
+                                        bidirectional=args.bidirectional).cuda()
     
     elif (args.decoder_type.lower() == 'transformer'):
-        model = LXMERT_Transformer.LXMERT_Transformer(
-                                    args.nheads, 
-                                    args.num_transformer_layers, 
-                                    LXMERT_HIDDEN_SIZE).cuda()
+        model = Encoder_Transformer.Encoder_Transformer(encoder_type=args.encoder_type,
+                                                        nheads=args.nheads,
+                                                        decoder_layers=args.num_transformer_layers,
+                                                        hidden_size=LXMERT_HIDDEN_SIZE).cuda()
         
     elif(args.decoder_type.lower() == 'attn-rnn'):
-        model = LXMERT_AttnRNN.LXMERT_AttnRNN(rnn_type=args.rnn_type,
-                                              attn_type = args.attn_type,
-                                              attn_method=args.attn_method)
+        model = Encoder_AttnRNN.Encoder_AttnRNN(encoder_type = args.encoder_type,
+                                                rnn_type=args.rnn_type,
+                                                attn_type = args.attn_type,
+                                                attn_method=args.attn_method).cuda()
                                    
     train_dset = GenVQADataset(model.Tokenizer, 
         annotations = "../fsvqa_data_train/annotations.pickle", 
