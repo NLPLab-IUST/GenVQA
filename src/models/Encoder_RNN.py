@@ -2,23 +2,29 @@ import os
 import random
 
 import torch
-from transformers import LxmertModel, LxmertTokenizer
+from transformers import LxmertModel, LxmertTokenizer, VisualBertModel, BertTokenizer
 
 from src.models.RNN import RNNModel
 
 
-class LXMERT_RNN(torch.nn.Module):
-    def __init__(self, rnn_type = "lstm", num_layers=1, bidirectional=False, prob=0.5, freeze_lxmert=True):
+class Encoder_RNN(torch.nn.Module):
+    def __init__(self, encoder_type='lxmert', rnn_type = "lstm", num_layers=1, bidirectional=False, prob=0.5, freeze_encoder=True):
         super().__init__()
-        self.LXMERT = LxmertModel.from_pretrained("unc-nlp/lxmert-base-uncased")
-        self.Tokenizer = LxmertTokenizer.from_pretrained("unc-nlp/lxmert-base-uncased")
+        self.encoder_type = encoder_type
         
-        #freeze LXMERT
-        if freeze_lxmert:
-            for p in self.LXMERT.parameters():
+        if encoder_type == 'lxmert':
+            self.encoder = LxmertModel.from_pretrained("unc-nlp/lxmert-base-uncased")
+            self.Tokenizer = LxmertTokenizer.from_pretrained("unc-nlp/lxmert-base-uncased")
+        elif encoder_type == 'visualbert':
+            self.encoder = VisualBertModel.from_pretrained("uclanlp/visualbert-vqa-coco-pre")
+            self.Tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+        
+        #freeze encoder
+        if freeze_encoder:
+            for p in self.encoder.parameters():
                 p.requires_grad = False
                 
-        embedding_layer = list(self.LXMERT.children())[0].word_embeddings
+        embedding_layer = list(self.encoder.children())[0].word_embeddings
         self.rnn = RNNModel(embedding=embedding_layer,
                             rnn_type=rnn_type,  
                             output_size=self.Tokenizer.vocab_size, 
@@ -26,19 +32,15 @@ class LXMERT_RNN(torch.nn.Module):
                             bidirectional=bidirectional, 
                             prob=prob)
         
-        self.name = f"LXMERT_{rnn_type}_{num_layers}"
+        self.name = f"{encoder_type}_{rnn_type}_{num_layers}"
         self.name = f"{self.name}_bidirectional" if bidirectional else self.name
+        
+        print(self.name)
     
     def forward(self, input_ids, visual_feats, visual_pos, attention_mask, answer_tokenized, teacher_force_ratio=0.5):
         """
             Train phase forward propagation
         """
-        kwargs = {
-            "input_ids" : input_ids,
-            "visual_feats": visual_feats,
-            "visual_pos" : visual_pos,
-            "attention_mask": attention_mask
-        }
         
         batch_size = answer_tokenized.shape[1]
         target_len = answer_tokenized.shape[0]
@@ -47,12 +49,24 @@ class LXMERT_RNN(torch.nn.Module):
         outputs = torch.zeros(target_len, batch_size, target_vocab_size).cuda()
         
         #encoder
-        output = self.LXMERT(**kwargs)
-        encoder_output = output.pooled_output
+        if self.encoder_type == 'lxmert':
+            kwargs = {"input_ids" : input_ids,
+                    "visual_feats": visual_feats,
+                    "visual_pos" : visual_pos,
+                    "attention_mask": attention_mask}
+            output = self.encoder(**kwargs)
+            encoder_output = output.pooled_output
+            
+        elif self.encoder_type == 'visualbert':
+            kwargs = {"input_ids" : input_ids,
+                      "attention_mask": attention_mask,
+                      "visual_embeds": visual_feats}
+            output = self.encoder(**kwargs)
+            encoder_output = output.pooler_output
+            
         # encoder_output shape: (N, hidden_size) to send it to
         # Decoder as hidden we want it to be (D*num_layers, N, hidden_size) so we're
         # just gonna expand it.
-        # D = 2 if bidirectional=True otherwise 1
         
         D = 2 if self.rnn.bidirectional==True else 1
         

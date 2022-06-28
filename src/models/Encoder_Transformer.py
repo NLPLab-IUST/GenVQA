@@ -1,17 +1,26 @@
+import os
+
 import torch
 from torch import nn
 
-from transformers import LxmertModel, LxmertTokenizer
-class LXMERT_Transformer(nn.Module):
-    def __init__(self, nheads, decoder_layers, hidden_size, freeze_lxmert=True):
+from transformers import LxmertModel, LxmertTokenizer, VisualBertModel, BertTokenizer
+
+class Encoder_Transformer(nn.Module):
+    def __init__(self, encoder_type, nheads, decoder_layers, hidden_size, freeze_encoder=True):
         super().__init__()
-        self.LXMERT = LxmertModel.from_pretrained("unc-nlp/lxmert-base-uncased")
-        self.LXMERT.config.output_hidden_states = True
-        self.Tokenizer = LxmertTokenizer.from_pretrained("unc-nlp/lxmert-base-uncased")
+        
+        if encoder_type == 'lxmert':
+            self.encoder = LxmertModel.from_pretrained("unc-nlp/lxmert-base-uncased")
+            self.encoder.config.output_hidden_states = True
+            self.Tokenizer = LxmertTokenizer.from_pretrained("unc-nlp/lxmert-base-uncased")
+            
+        elif encoder_type == 'visualbert':
+            self.encoder = VisualBertModel.from_pretrained("uclanlp/visualbert-vqa-coco-pre")
+            self.Tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
         #freeze LXMERT
-        if freeze_lxmert:
-            for p in self.LXMERT.parameters():
+        if freeze_encoder:
+            for p in self.encoder.parameters():
                 p.requires_grad = False
 
         
@@ -19,7 +28,7 @@ class LXMERT_Transformer(nn.Module):
         transformer_layer = nn.TransformerDecoderLayer(d_model=hidden_size, nhead=nheads)
         self.Decoder = nn.TransformerDecoder(transformer_layer, num_layers=decoder_layers)
 
-        self.embedding_layer = self.LXMERT.embeddings.word_embeddings
+        self.embedding_layer = self.encoder.embeddings.word_embeddings
         self.output_size = self.Tokenizer.vocab_size
         self.decoder_layers = decoder_layers
         self.nheads = nheads
@@ -34,20 +43,26 @@ class LXMERT_Transformer(nn.Module):
         """
             Train phase forward propagation
         """
-        kwargs = {
-            "input_ids" : input_ids,
-            "visual_feats": visual_feats,
-            "visual_pos" : visual_pos,
-            "attention_mask": attention_mask
-        }
         
         tgt_len = answer_tokenized.shape[0]
         
         # encode question and image with lxmert
-        output = self.LXMERT(**kwargs)
-        encoder_output = output.language_hidden_states[-1].permute(1, 0, 2)
-        # encoder_output shape: (seq_len, N, hidden_size) to send it to
-        
+        if self.encoder_type == 'lxmert':
+            kwargs = {"input_ids" : input_ids,
+                      "visual_feats": visual_feats,
+                      "visual_pos" : visual_pos,
+                      "attention_mask": attention_mask}
+            output = self.encoder(**kwargs)
+            encoder_output  = output.language_hidden_states[-1].permute(1, 0, 2)
+            # encoder_output shape: (seq_len, N, hidden_size) to send it to
+            
+        elif self.encoder_type == 'visualbert':
+            kwargs = {"input_ids" : input_ids,
+                      "attention_mask": attention_mask,
+                      "visual_embeds": visual_feats}
+            output = self.encoder(**kwargs)
+            encoder_output = output.last_hidden_state.permute(1,0,2)
+            # encoder_output shape: (sequence_length, batch_size, hidden_size)
         
         answer_embeddings = self.embedding_layer(answer_tokenized)
         # answer embeddings shape: (seq_len, N, embedding_size)
