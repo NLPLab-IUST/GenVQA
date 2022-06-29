@@ -72,26 +72,24 @@ class VQA:
             if epoch % self.log_every == self.log_every - 1:
                 val_loss = None
                 val_acc = None
-                pred_sentences = []
-                ref_sentences = []
+                qualification_metics = []
                 if(self.val_loader):
                     self.model.eval()
+                    metric_calculator = MetricCalculator(self.model.Tokenizer, self.model.embedding_layer.cuda())
 
                     val_loss = val_acc = val_f1 = 0
-                    
-                    for i, (input_ids, feats, boxes, masks, target, target_masks) in enumerate(self.val_loader):
+                    print("Validation Evaluations: ")
+                    for i, (input_ids, feats, boxes, masks, target, target_masks) in tqdm(enumerate(self.val_loader)):
                         val_loss, val_acc_batch, val_f1_batch, preds, refs = self.__step(input_ids, feats, boxes, masks, target, target_masks, val=True)
                         val_loss += loss.item()
                         val_acc += val_acc_batch
                         val_f1 += val_f1_batch
-                        pred_sentences.extend(preds)
-                        ref_sentences.extend(refs)
+                        metric_calculator.compute_batch(pred_sentences, ref_sentences)
                         
                     val_loss /= len(self.val_loader)
                     val_acc /= len(self.val_loader)
                     val_f1 /= len(self.val_loader)
                     print("Calculating qualification metrics")
-                    metric_calculator = MetricCalculator(self.model.Tokenizer, self.model.embedding_layer.cpu())
                     results[epoch] = {
                                         "qualification_metics": metric_calculator.compute(pred_sentences, ref_sentences), 
                                         "loss": val_loss,
