@@ -1,6 +1,5 @@
 import argparse
 import os
-from ast import arg
 from datetime import datetime
 import random 
 import numpy as np
@@ -19,6 +18,7 @@ class VQA:
     def __init__(self,
                  train_date,
                  model,
+                 decoder_type,
                  train_dset,
                  val_dset=None,
                  tokenizer=None,
@@ -35,6 +35,7 @@ class VQA:
         self.log_every = log_every
         self.train_date_time = train_date
         self.save_every = save_every
+        self.decoder_type = decoder_type
         
         self.train_loader = DataLoader(train_dset, batch_size=batch_size, shuffle=True, drop_last=True, collate_fn=pad_batched_sequence)
         self.val_loader = DataLoader(val_dset, batch_size=batch_size, shuffle=False, drop_last=True, collate_fn=pad_batched_sequence)
@@ -112,9 +113,16 @@ class VQA:
                 self.model.save(self.save_dir, epoch)
             
     
-    def __step(self, input_ids, feats, boxes, masks, target, target_masks, val=False): 
-        teacher_force_ratio = 0 if val else 0.5       
-        logits = self.model(input_ids, feats, boxes, masks, target, teacher_force_ratio)
+    def __step(self, input_ids, feats, boxes, masks, target, target_masks, val=False):
+        
+        if self.decoder_type in ['rnn','attn-rnn']:
+            teacher_force_ratio = 0 if val else 0.5       
+       
+            logits = self.model(input_ids, feats, boxes, masks, target, teacher_force_ratio)
+            
+        elif self.decoder_type == 'transformer':
+            logits = self.model(input_ids, feats, boxes, masks, target)
+        
         # logits shape: (L, N, target_vocab_size)
         loss = self.criterion(logits.permute(1, 2, 0), target.permute(1,0))
 
@@ -134,13 +142,14 @@ class VQA:
                 
 def parse_args():
     parser = argparse.ArgumentParser()
+    
     #specify seed for reproducing
     parser.add_argument("--seed", default=8956, type=int)
-
-    #specify encoder type, options: lxmert, visualbert 
-    parser.add_argument("--encoder_type", default="rnn", type=str)
     
-    #specify decoder type, options: rnn, attn-rnn 
+    #specify encoder type, options: lxmert, visualbert 
+    parser.add_argument("--encoder_type", default="lxmert", type=str)
+    
+    #specify decoder type, options: rnn, attn-rnn, transformer
     parser.add_argument("--decoder_type", default="rnn", type=str)
     
     #RNN specifications
@@ -164,29 +173,29 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-
+    
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     np.random.seed(args.seed)
-
+    
     model = None
     if (args.decoder_type.lower() == 'rnn'):
         model = Encoder_RNN.Encoder_RNN(encoder_type=args.encoder_type,
                                         rnn_type=args.rnn_type, 
                                         num_layers=args.num_rnn_layers, 
-                                        bidirectional=args.bidirectional).cuda()
+                                        bidirectional=args.bidirectional)
     
     elif (args.decoder_type.lower() == 'transformer'):
         model = Encoder_Transformer.Encoder_Transformer(encoder_type=args.encoder_type,
                                                         nheads=args.nheads,
                                                         decoder_layers=args.num_transformer_layers,
-                                                        hidden_size=LXMERT_HIDDEN_SIZE).cuda()
+                                                        hidden_size=LXMERT_HIDDEN_SIZE)
         
     elif(args.decoder_type.lower() == 'attn-rnn'):
         model = Encoder_AttnRNN.Encoder_AttnRNN(encoder_type = args.encoder_type,
                                                 rnn_type=args.rnn_type,
                                                 attn_type = args.attn_type,
-                                                attn_method=args.attn_method).cuda()
+                                                attn_method=args.attn_method)
                                    
     train_dset = GenVQADataset(model.Tokenizer, 
         annotations = "../fsvqa_data_train_full/annotations.pickle", 
