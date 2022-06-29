@@ -189,12 +189,12 @@ if __name__ == "__main__":
                                                 attn_method=args.attn_method).cuda()
                                    
     train_dset = GenVQADataset(model.Tokenizer, 
-        annotations = "../fsvqa_data_train/annotations.pickle", 
-        questions = "../fsvqa_data_train/questions.pickle", 
+        annotations = "../fsvqa_data_train_full/annotations.pickle", 
+        questions = "../fsvqa_data_train_full/questions.pickle", 
         img_dir = "../img_data")
     val_dset = GenVQADataset(model.Tokenizer, 
-        annotations = "../fsvqa_data_val/annotations.pickle", 
-        questions = "../fsvqa_data_val/questions.pickle", 
+        annotations = "../fsvqa_data_val_full/annotations.pickle", 
+        questions = "../fsvqa_data_val_full/questions.pickle", 
         img_dir = "../val_img_data")
     
     if model:
