@@ -2,18 +2,17 @@ import torch
 from src.metrics.EmbeddingBase.EmbeddingBaseMetric import EmbeddingBaseMetric
 
 class AverageScore(EmbeddingBaseMetric):
-    def __init__(self, tokenizer, embedding_layer):
-        super().__init__(tokenizer, embedding_layer)       
+    def __init__(self):
+        super().__init__()       
     
     @torch.no_grad()
     def __embedding_sum(self, sentence):
         """
         Return the sum of embeddings of words in sentences.
         :param sentence:  (seq_len, embedding_size)
-        :param embedding_layer: embedding_layer of BERTBased model.
         :return: a 1D tensor of size (embedding_size).
         """
-        total = torch.sum(self.embedding_layer(sentence), dim=0)
+        total = torch.sum(sentence, dim=0)
         return total
 
     @torch.no_grad()

@@ -2,8 +2,8 @@ import torch
 from src.metrics.EmbeddingBase.EmbeddingBaseMetric import EmbeddingBaseMetric
 
 class GreedyMatchingScore(EmbeddingBaseMetric):
-    def __init__(self, tokenizer, embedding_layer):
-        super().__init__(tokenizer, embedding_layer)
+    def __init__(self):
+        super().__init__()
 
     @torch.no_grad()
     def __greedy_match(self, a, b):
@@ -43,8 +43,8 @@ class GreedyMatchingScore(EmbeddingBaseMetric):
         :param reference_sentence:
         :return:
         """
-        hyp = self.embedding_layer(hypothesis_sentence)
-        ref = self.embedding_layer(reference_sentence)
+        hyp = hypothesis_sentence
+        ref = reference_sentence
         return self.__greedy_average(hyp, ref)
 
 
@@ -58,8 +58,8 @@ class GreedyMatchingScore(EmbeddingBaseMetric):
         """
         scores = []
         for hypothesis, reference in zip(hypothesis_corpus, reference_corpus):
-            X = self.embedding_layer(hypothesis)
-            Y = self.embedding_layer(reference)
+            X = hypothesis
+            Y = reference
             if X.shape[0] == 0 or Y.shape[0] == 0:
                 scores.append(0)
                 continue
