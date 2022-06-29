@@ -6,6 +6,8 @@ import random
 import numpy as np
 import torch
 import torch.nn as nn
+from src.decoders.greedy_decoder import GreedyDecoder
+from src.metrics.MetricCalculator import MetricCalculator
 from src.models import Encoder_AttnRNN, Encoder_RNN, Encoder_Transformer
 from src.constants import CHECKPOINTS_DIR, LXMERT_HIDDEN_SIZE
 from src.data.datasets import GenVQADataset, pad_batched_sequence
@@ -13,8 +15,7 @@ from src.logger import Instance as Logger
 from torch.utils.data.dataloader import DataLoader
 from torchmetrics import Accuracy, F1Score
 from tqdm import tqdm
-
-
+import json
 class VQA:
     def __init__(self,
                  train_date,
@@ -53,14 +54,14 @@ class VQA:
         
     def train(self):
         running_loss = running_accuracy = running_accuracy_best = running_f1 = 0
-
+        results = {}
         for epoch in range(self.epochs):
             for i, (input_ids, feats, boxes, masks, target, target_masks) in enumerate(pbar := tqdm(self.train_loader, total=len(self.train_loader))):
 
                 self.model.train()
                 
                 pbar.set_description(f"Epoch {epoch}")
-                loss, batch_acc, batch_f1 = self.__step(input_ids, feats, boxes, masks, target, target_masks, val=False)  
+                loss, batch_acc, batch_f1, _, _ = self.__step(input_ids, feats, boxes, masks, target, target_masks, val=False)  
                 
                 running_loss += loss.item()
                 running_accuracy += batch_acc.item()
@@ -71,27 +72,40 @@ class VQA:
             if epoch % self.log_every == self.log_every - 1:
                 val_loss = None
                 val_acc = None
+                pred_sentences = []
+                ref_sentences = []
                 if(self.val_loader):
                     self.model.eval()
 
                     val_loss = val_acc = val_f1 = 0
                     
                     for i, (input_ids, feats, boxes, masks, target, target_masks) in enumerate(self.val_loader):
-                        val_loss, val_acc_batch, val_f1_batch = self.__step(input_ids, feats, boxes, masks, target, target_masks, val=True)
+                        val_loss, val_acc_batch, val_f1_batch, preds, refs = self.__step(input_ids, feats, boxes, masks, target, target_masks, val=True)
                         val_loss += loss.item()
                         val_acc += val_acc_batch
                         val_f1 += val_f1_batch
+                        pred_sentences.extend(preds)
+                        ref_sentences.extend(refs)
                         
                     val_loss /= len(self.val_loader)
                     val_acc /= len(self.val_loader)
                     val_f1 /= len(self.val_loader)
+                    print("Calculating qualification metrics")
+                    metric_calculator = MetricCalculator(self.model.Tokenizer, self.model.embedding_layer.cpu())
+                    results[epoch] = {
+                                        "qualification_metics": metric_calculator.compute(pred_sentences, ref_sentences), 
+                                        "loss": val_loss,
+                                        "accuracy": val_acc,
+                                        "f1" : val_f1
+                    }
 
                 total_data_iterated = self.log_every * len(self.train_loader)
                 running_loss /= total_data_iterated
                 running_accuracy /= total_data_iterated
                 running_f1 /= total_data_iterated
+               
 
-                
+
                 if(self.val_loader):
                     Logger.log(f"Train_{self.train_date_time}", f"Training epoch {epoch}: Train loss {running_loss:.3f}. Val loss: {val_loss:.3f}."
                                 + f" Train accuracy {running_accuracy:.3f}. Val accuracy: {val_acc:.3f}. Train F1-Score: {running_f1}. Validation F1-Score: {val_f1}")
@@ -110,27 +124,32 @@ class VQA:
 
             if(epoch % self.save_every == self.save_every - 1):
                 self.model.save(self.save_dir, epoch)
-            
+        with open(os.path.join(self.save_dir, "validation_results.json")) as fp: 
+            json.dump(results, fp)
     
     def __step(self, input_ids, feats, boxes, masks, target, target_masks, val=False): 
         teacher_force_ratio = 0 if val else 0.5       
         logits = self.model(input_ids, feats, boxes, masks, target, teacher_force_ratio)
         # logits shape: (L, N, target_vocab_size)
         loss = self.criterion(logits.permute(1, 2, 0), target.permute(1,0))
-
+        #validation only!
+        pred_sentences = None
+        ref_sentences = None
         if not(val):
             self.optim.zero_grad()
             loss.backward()
             self.optim.step()
-        
+        else:
+            # get ready for qualifacation metrics (BLEU, ROUGE, etc)
+            decoder = GreedyDecoder(self.model.Tokenizer)
+            pred_sentences = decoder.decode_from_logits(logits)
+            ref_sentences = decoder.batch_decode(target)
+
         f1_score = self.f1_score(logits.permute(1,2,0), target.permute(1,0))
         batch_acc = self.accuracy(logits.permute(1,2,0), target.permute(1,0))
-        # pred = torch.argmax(logits, dim=-1)
-        # true_predictions = torch.sum((pred == target) * target_masks)   
-        # batch_acc = true_predictions / (self.batch_size * torch.sum(target_masks))
-        
+
         assert batch_acc <= 1
-        return loss, batch_acc, f1_score
+        return loss, batch_acc, f1_score, ref_sentences, pred_sentences
                 
 def parse_args():
     parser = argparse.ArgumentParser()
