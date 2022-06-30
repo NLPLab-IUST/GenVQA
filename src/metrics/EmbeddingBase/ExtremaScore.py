@@ -3,8 +3,8 @@ from src.metrics.EmbeddingBase.EmbeddingBaseMetric import EmbeddingBaseMetric
 
 
 class ExtremaScore(EmbeddingBaseMetric):
-    def __init__(self, tokenizer, embedding_layer):
-        super().__init__(tokenizer, embedding_layer)
+    def __init__(self):
+        super().__init__()
     
     @torch.no_grad()
     def __get_extrema(self, sentence):
@@ -30,8 +30,8 @@ class ExtremaScore(EmbeddingBaseMetric):
         :param reference_sentence:
         :return:
         """
-        hypothesis = self.embedding_layer(hypothesis_sentence)
-        reference = self.embedding_layer(reference_sentence)
+        hypothesis = hypothesis_sentence
+        reference = reference_sentence
         return self._cos_sim(
             a=self.__get_extrema(hypothesis),
             b=self.__get_extrema(reference),
@@ -48,8 +48,8 @@ class ExtremaScore(EmbeddingBaseMetric):
         """
         scores = []
         for hypothesis, reference in zip(hypothesis_corpus, reference_corpus):
-            X = self.embedding_layer(hypothesis)
-            Y = self.embedding_layer(reference)
+            X = hypothesis
+            Y = reference
 
             value = self._cos_sim(self.__get_extrema(X), self.__get_extrema(Y))
             scores.append(value)

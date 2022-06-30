@@ -24,17 +24,17 @@ class Encoder_AttnRNN(torch.nn.Module):
         if freeze_encoder:
             for p in self.encoder.parameters():
                 p.requires_grad = False
-                
-        embedding_layer = list(self.encoder.children())[0].word_embeddings
-        
+          
+        self.embedding_layer = self.encoder.embeddings.word_embeddings
+
         if attn_type=='bahdanau':
-            self.rnn = BahdanauRNN(embedding=embedding_layer,
+            self.rnn = BahdanauRNN(embedding=self.embedding_layer,
                                     rnn_type=rnn_type,  
                                     output_size=self.Tokenizer.vocab_size,
                                     prob=prob)
             self.name = f"{encoder_type}_{attn_type}_attn_{rnn_type}"
         elif attn_type =='luong':
-            self.rnn = LuongRNN(embedding=embedding_layer,
+            self.rnn = LuongRNN(embedding=self.embedding_layer,
                                 rnn_type=rnn_type,
                                 attn_method=attn_method,
                                 output_size=self.Tokenizer.vocab_size,

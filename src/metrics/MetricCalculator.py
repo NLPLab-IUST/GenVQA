@@ -9,50 +9,70 @@ from src.metrics.cider.cider import Cider
 #!pip install bert_score
 
 class MetricCalculator():
-    def __init__(self, tokenizer, embedding_layer) -> None:
-        self.tokenizer = tokenizer
+    def __init__(self, embedding_layer) -> None:
+
         self.embedding_layer = embedding_layer
-    def compute(self, preds, references):
+        self.METRICS = ["average_score", "bleu", "rougeL", "meteor", "bertscore"]
+        self.accumelated_instances = []
+        
+        #overlapping ngram metircs
+        self.BLEU = evaluate.load('bleu')
+        self.ROUGE = evaluate.load('rouge')
+        self.METEOR = evaluate.load('meteor')
+        self.BERTSCORE = evaluate.load("bertscore")
+        self.CIDEr = Cider()
+
+    def add_batch(self, preds, references, preds_ids, ref_ids):
         
         # compute embedding based metrics
         metrics = {
-            "average_score" : AverageScore(self.tokenizer, self.embedding_layer),
-            "extrema_score" : ExtremaScore(self.tokenizer, self.embedding_layer),
-            "greedy_matching_score" : GreedyMatchingScore(self.tokenizer, self.embedding_layer)
+            "average_score" : AverageScore(),
+            # "extrema_score" : ExtremaScore(),
+            # "greedy_matching_score" : GreedyMatchingScore()
         }
 
         result = {}
         # tokenize inputs, we have to ignore [SEP] , [START] tokens. 
-        preds_tokenized = [self.tokenizer(pred, return_tensors="pt")['input_ids'].squeeze()[1:-1] for pred in preds]
-        ref_tokenized = [self.tokenizer(ref, return_tensors="pt")['input_ids'].squeeze()[1:-1] for ref in references]
-
-        for key in metrics:
-            result[key] = metrics[key].compute(preds_tokenized, ref_tokenized)
+        # preds_tokenized = [self.tokenizer(pred, return_tensors="pt")['input_ids'].squeeze()[1:-1].cuda() for pred in preds]
+        # ref_tokenized = [self.tokenizer(ref, return_tensors="pt")['input_ids'].squeeze()[1:-1].cuda() for ref in references]
         
-
-        #compute overlapping ngrams metrics
-        metrics = {
-            #bleu.compute(predictions=preds, references=target)
-            'bleu' : evaluate.load('bleu'),
-            #rouge.compute(predictions=preds, references=target)
-            'rougeL' : evaluate.load('rouge'),
-            #meteor.compute(predictions=preds, references=target)
-            'meteor' : evaluate.load('meteor'),
-        }
+        preds_emb = [self.embedding_layer(torch.tensor(s).cuda()) for s in preds_ids]
+        ref_emb = [self.embedding_layer(torch.tensor(s).cuda()) for s in ref_ids]
         
         for key in metrics:
-            result[key] = metrics[key].compute(predictions=preds, references=references)
+            result[key] = metrics[key].compute(preds_emb, ref_emb)
         
-        #compute BERTScore
-        bert_score = evaluate.load("bertscore")
-        result['bertscore'] =  bert_score.compute(predictions = preds, references = references, lang='en')
+        self.BLEU.add_batch(predictions=preds, references=references)
+        self.ROUGE.add_batch(predictions=preds, references=references)
+        self.METEOR.add_batch(predictions=preds, references=references)
+        self.BERTSCORE.add_batch(predictions=preds, references=references)
 
-        #compute CIDEr, convert tokenized tensors to tokenized lists
-        cider = Cider()
-        preds_tokenized = [p.tolist() for p in preds_tokenized]
-        refs_tokenized = [r.tolist() for r in ref_tokenized]
-        result[cider.method()] = cider.compute_score(preds_tokenized, refs_tokenized)
+        result[self.CIDEr.method()] = self.CIDEr.compute_score(preds_ids, ref_ids)
 
+        self.accumelated_instances.append(result)
+        return result
+
+    def compute(self):
+        result = {}
+        result[self.BLEU.name] = self.BLEU.compute()
+        result[self.ROUGE.name] = self.ROUGE.compute()
+        result[self.METEOR.name] = self.METEOR.compute()
+        result[self.BERTSCORE.name] = self.BERTSCORE.compute(lang='en')
+        average_scores = []
+        extrema_scores = []
+        greedy_scores = []
+        cider_scores = []
+        #compute other metrics manually
+        for item in self.accumelated_instances:
+            average_scores.append(item['average_score'].mean)
+            # extrema_scores.append(item['extrema_score'].mean)
+            # greedy_scores.append(item['greedy_matching_score'].mean)
+            cider_scores.append(item[self.CIDEr.method()][0])
+        
+        result['average_score'] = torch.mean(torch.stack(average_scores)).cpu().tolist()
+        # result['extrema_score'] = torch.mean(torch.stack(extrema_scores))
+        # result['greedy_matching_score'] = torch.mean(torch.stack(greedy_scores))
+        result[self.CIDEr.method()] = sum(cider_scores) / len(cider_scores)
         return result
 
 
@@ -62,9 +82,13 @@ if __name__ == '__main__':
 
     tokenizer = LxmertTokenizer.from_pretrained("unc-nlp/lxmert-base-uncased")
     model = LxmertModel.from_pretrained("unc-nlp/lxmert-base-uncased")
-    E = model.embeddings.word_embeddings
+    E = model.embeddings.word_embeddings.cuda()
 
-    mc = MetricCalculator(tokenizer, E)
-    preds = ['the cat is on the mat', 'the cat is on the mat']
-    target = ['there is a catty on the matew', 'a cat is on the mat']
-    print(mc.compute(preds, target))
+    mc = MetricCalculator(E)
+    preds = [['the cat is on the mat', 'the cat is on the mat'],  ['the cat is on the mat', 'the cat is on the mat']]
+    target = [['there is a catty on the matew', 'a cat is on the mat'], ['there is a catty on the matew', 'a cat is on the mat']]
+    for pred, ref in zip(preds, target):
+        preds_tokenized = [tokenizer(predd)['input_ids'].squeeze()[1:-1] for predd in pred]
+        ref_tokenized = [tokenizer(reff)['input_ids'].squeeze()[1:-1] for reff in ref]
+        mc.add_batch(pred, ref, preds_tokenized, ref_tokenized)
+    print(mc.compute())

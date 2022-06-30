@@ -5,6 +5,8 @@ import random
 import numpy as np
 import torch
 import torch.nn as nn
+from src.decoders.greedy_decoder import GreedyDecoder
+from src.metrics.MetricCalculator import MetricCalculator
 from src.models import Encoder_AttnRNN, Encoder_RNN, Encoder_Transformer
 from src.constants import CHECKPOINTS_DIR, LXMERT_HIDDEN_SIZE
 from src.data.datasets import GenVQADataset, pad_batched_sequence
@@ -12,8 +14,7 @@ from src.logger import Instance as Logger
 from torch.utils.data.dataloader import DataLoader
 from torchmetrics import Accuracy, F1Score
 from tqdm import tqdm
-
-
+import json
 class VQA:
     def __init__(self,
                  train_date,
@@ -51,48 +52,38 @@ class VQA:
         self.accuracy = Accuracy(num_classes=self.model.Tokenizer.vocab_size, ignore_index=pad_idx, top_k=1, mdmc_average='samplewise')
         
         self.save_dir = os.path.join(CHECKPOINTS_DIR, str(self.train_date_time))
+        if not(os.path.exists(self.save_dir)):
+            os.makedirs(self.save_dir, exist_ok=True)
         
     def train(self):
         running_loss = running_accuracy = running_accuracy_best = running_f1 = 0
-
         for epoch in range(self.epochs):
+            self.model.train()
             for i, (input_ids, feats, boxes, masks, target, target_masks) in enumerate(pbar := tqdm(self.train_loader, total=len(self.train_loader))):
 
-                self.model.train()
-                
                 pbar.set_description(f"Epoch {epoch}")
-                loss, batch_acc, batch_f1 = self.__step(input_ids, feats, boxes, masks, target, target_masks, val=False)  
+                loss, batch_acc, batch_f1, logits = self.__step(input_ids, feats, boxes, masks, target, target_masks, val=False)  
                 
                 running_loss += loss.item()
                 running_accuracy += batch_acc.item()
                 running_f1 += batch_f1
-                
                 pbar.set_postfix(loss=running_loss/(i+1), accuracy=running_accuracy/(i+1))
-            
+
             if epoch % self.log_every == self.log_every - 1:
                 val_loss = None
                 val_acc = None
+                qualification_metics = []
+                
+                # validate if valiation loader is not none
                 if(self.val_loader):
-                    self.model.eval()
-
-                    val_loss = val_acc = val_f1 = 0
-                    
-                    for i, (input_ids, feats, boxes, masks, target, target_masks) in enumerate(self.val_loader):
-                        val_loss, val_acc_batch, val_f1_batch = self.__step(input_ids, feats, boxes, masks, target, target_masks, val=True)
-                        val_loss += loss.item()
-                        val_acc += val_acc_batch
-                        val_f1 += val_f1_batch
-                        
-                    val_loss /= len(self.val_loader)
-                    val_acc /= len(self.val_loader)
-                    val_f1 /= len(self.val_loader)
-
+                    val_loss, val_acc, val_f1, _ = self.__evaluate_validation()
+                
                 total_data_iterated = self.log_every * len(self.train_loader)
                 running_loss /= total_data_iterated
                 running_accuracy /= total_data_iterated
                 running_f1 /= total_data_iterated
-
                 
+                #logging results
                 if(self.val_loader):
                     Logger.log(f"Train_{self.train_date_time}", f"Training epoch {epoch}: Train loss {running_loss:.3f}. Val loss: {val_loss:.3f}."
                                 + f" Train accuracy {running_accuracy:.3f}. Val accuracy: {val_acc:.3f}. Train F1-Score: {running_f1}. Validation F1-Score: {val_f1}")
@@ -108,11 +99,59 @@ class VQA:
                     running_accuracy_best = running_accuracy
                 
                 running_loss = running_accuracy = running_f1 = 0
-
+            
             if(epoch % self.save_every == self.save_every - 1):
                 self.model.save(self.save_dir, epoch)
-            
+        
+        if(self.val_loader):
+            val_loss, val_acc, val_f1, other_metrics = self.__evaluate_validation(metric_calculator=True)
+            with open(os.path.join(self.save_dir, "validation_results.json"), 'w') as fp: 
+                json.dump(other_metrics, fp)
     
+    def __evaluate_validation(self, metric_calculator=False):
+        print("Validation Evaluations: ")
+        self.model.eval()
+        val_loss = val_acc = val_f1 = 0
+        other_metrics = None
+
+        # define metric calculator if we need extra metric calculation
+        if(metric_calculator):
+            metric_calculator = MetricCalculator(self.model.embedding_layer) 
+        
+        for i, (input_ids, feats, boxes, masks, target, target_masks) in enumerate(pbar := tqdm(self.val_loader, total=len(self.val_loader))):
+            #calculate losses, and logits + necessary metrics for showin during training
+            loss, val_acc_batch, val_f1_batch, logits = self.__step(input_ids, feats, boxes, masks, target, target_masks, val=True)
+            
+            val_loss += loss.item()
+            val_acc += val_acc_batch
+            val_f1 += val_f1_batch
+            pbar.set_postfix(loss=val_loss/(i+1), accuracy=val_acc/(i+1))
+            
+            #only when we need extra metrics for evaluation!
+            if(metric_calculator):
+                # we used greedy decoder as a temporary decode. 
+                decoder = GreedyDecoder(self.model.Tokenizer)
+                # using argmax to find the best token!
+                preds_tokenized = decoder.decode_from_logits(logits)
+
+                #tokenized sentences without [PAD] and [SEP] tokens. pure sentences!
+                pred_sentences_decoded, preds_sentences_ids = decoder.batch_decode(preds_tokenized.permute(1, 0))
+                ref_sentences_decoded, ref_sentences_ids = decoder.batch_decode(target.permute(1, 0))
+                
+                #calculate metrics such as BLEU, ROUGE, BERTSCORE, and others.
+                #it accumalates values to be calculated later
+                metric_calculator.add_batch(pred_sentences_decoded, ref_sentences_decoded, preds_sentences_ids, ref_sentences_ids)
+
+        val_loss /= len(self.val_loader)
+        val_acc /= len(self.val_loader)
+        val_f1 /= len(self.val_loader)
+        
+        #calculate metrics based on the accumelated metrics during evaluation!
+        if(metric_calculator):
+            other_metrics = metric_calculator.compute()
+        
+        return val_loss, val_acc, val_f1, other_metrics
+        
     def __step(self, input_ids, feats, boxes, masks, target, target_masks, val=False):
         
         if self.decoder_type in ['rnn','attn-rnn']:
@@ -130,15 +169,12 @@ class VQA:
             self.optim.zero_grad()
             loss.backward()
             self.optim.step()
-        
+
         f1_score = self.f1_score(logits.permute(1,2,0), target.permute(1,0))
         batch_acc = self.accuracy(logits.permute(1,2,0), target.permute(1,0))
-        # pred = torch.argmax(logits, dim=-1)
-        # true_predictions = torch.sum((pred == target) * target_masks)   
-        # batch_acc = true_predictions / (self.batch_size * torch.sum(target_masks))
-        
+
         assert batch_acc <= 1
-        return loss, batch_acc, f1_score
+        return loss, batch_acc, f1_score, logits
                 
 def parse_args():
     parser = argparse.ArgumentParser()
