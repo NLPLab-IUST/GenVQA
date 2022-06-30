@@ -1,21 +1,23 @@
 import argparse
+import json
 import os
+import random
 from datetime import datetime
-import random 
+
 import numpy as np
 import torch
 import torch.nn as nn
-from src.decoders.greedy_decoder import GreedyDecoder
-from src.metrics.MetricCalculator import MetricCalculator
-from src.models import Encoder_AttnRNN, Encoder_RNN, Encoder_Transformer
+from pytorchtools import EarlyStopping
 from src.constants import CHECKPOINTS_DIR, LXMERT_HIDDEN_SIZE
 from src.data.datasets import GenVQADataset, pad_batched_sequence
+from src.decoders.greedy_decoder import GreedyDecoder
 from src.logger import Instance as Logger
+from src.metrics.MetricCalculator import MetricCalculator
+from src.models import Encoder_AttnRNN, Encoder_RNN, Encoder_Transformer
 from torch.utils.data.dataloader import DataLoader
 from torchmetrics import Accuracy, F1Score
 from tqdm import tqdm
-from pytorchtools import EarlyStopping
-import json
+
 
 class VQA:
     def __init__(self,
@@ -49,8 +51,8 @@ class VQA:
         pad_idx = 0
         self.criterion = nn.CrossEntropyLoss(ignore_index=pad_idx)
         self.optim = torch.optim.Adam(list(self.model.parameters()), lr=lr)
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, step_size=40, gamma=0.5)
-        self.early_stopping = EarlyStopping(patience=20, verbose=True)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, step_size=5, gamma=0.1)
+        self.early_stopping = EarlyStopping(patience=3, verbose=True)
         
         self.f1_score = F1Score(num_classes=self.model.Tokenizer.vocab_size, ignore_index=pad_idx, top_k=1, mdmc_average='samplewise')
         self.accuracy = Accuracy(num_classes=self.model.Tokenizer.vocab_size, ignore_index=pad_idx, top_k=1, mdmc_average='samplewise')
@@ -99,7 +101,7 @@ class VQA:
 
                 
                 if(running_accuracy > running_accuracy_best):
-                    self.model.save(self.save_dir, f"BEST")
+                    self.model.save(self.save_dir, "BEST")
                     running_accuracy_best = running_accuracy
                 
                 running_loss = running_accuracy = running_f1 = 0
@@ -135,7 +137,7 @@ class VQA:
             loss, val_acc_batch, val_f1_batch, logits = self.__step(input_ids, feats, boxes, masks, target, target_masks, val=True)
             
             val_loss += loss.item()
-            val_acc += val_acc_batch
+            val_acc += val_acc_batch.item()
             val_f1 += val_f1_batch
             pbar.set_postfix(loss=val_loss/(i+1), accuracy=val_acc/(i+1))
             
@@ -168,7 +170,6 @@ class VQA:
         
         if self.decoder_type in ['rnn','attn-rnn']:
             teacher_force_ratio = 0 if val else 0.5       
-       
             logits = self.model(input_ids, feats, boxes, masks, target, teacher_force_ratio)
             
         elif self.decoder_type == 'transformer':
@@ -180,6 +181,7 @@ class VQA:
         if not(val):
             self.optim.zero_grad()
             loss.backward()
+            nn.utils.clip_grad_norm_(self.model.parameters(), 5)
             self.optim.step()
 
         f1_score = self.f1_score(logits.permute(1,2,0), target.permute(1,0))
