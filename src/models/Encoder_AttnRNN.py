@@ -22,7 +22,7 @@ class Encoder_AttnRNN(torch.nn.Module):
         
         #freeze encoder
         if freeze_encoder:
-            for p in self.enocder.parameters():
+            for p in self.encoder.parameters():
                 p.requires_grad = False
           
         self.embedding_layer = self.encoder.embeddings.word_embeddings
