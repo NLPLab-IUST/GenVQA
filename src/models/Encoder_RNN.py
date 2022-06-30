@@ -23,9 +23,10 @@ class Encoder_RNN(torch.nn.Module):
         if freeze_encoder:
             for p in self.encoder.parameters():
                 p.requires_grad = False
-                
-        embedding_layer = list(self.encoder.children())[0].word_embeddings
-        self.rnn = RNNModel(embedding=embedding_layer,
+        
+        self.embedding_layer = self.encoder.embeddings.word_embeddings
+
+        self.rnn = RNNModel(embedding=self.embedding_layer,
                             rnn_type=rnn_type,  
                             output_size=self.Tokenizer.vocab_size, 
                             num_layers=num_layers, 

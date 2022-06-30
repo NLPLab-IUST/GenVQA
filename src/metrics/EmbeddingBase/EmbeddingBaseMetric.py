@@ -5,9 +5,7 @@ CorpusLevelScore = collections.namedtuple('CorpusLevelScore',
                                           ['mean', 'confidence_interval', 'standard_deviation'])
 
 class EmbeddingBaseMetric():
-    def __init__(self, tokenizer, embedding_layer):
-        self.tokenizer = tokenizer
-        self.embedding_layer = embedding_layer
+    def __init__(self):
 
         # See https://en.wikipedia.org/wiki/1.96 for details of this magic number.
         self.__95_CI_DEVIATE = 1.96
