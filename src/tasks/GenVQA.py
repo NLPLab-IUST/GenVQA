@@ -52,7 +52,7 @@ class VQA:
         self.criterion = nn.CrossEntropyLoss(ignore_index=pad_idx)
         self.optim = torch.optim.Adam(list(self.model.parameters()), lr=lr)
         self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, step_size=10, gamma=0.5)
-        self.early_stopping = EarlyStopping(patience=3, verbose=True)
+        self.early_stopping = EarlyStopping(patience=5, verbose=True)
         
         self.f1_score = F1Score(num_classes=self.model.Tokenizer.vocab_size, ignore_index=pad_idx, top_k=1, mdmc_average='samplewise')
         self.accuracy = Accuracy(num_classes=self.model.Tokenizer.vocab_size, ignore_index=pad_idx, top_k=1, mdmc_average='samplewise')
@@ -257,5 +257,5 @@ if __name__ == "__main__":
         img_dir = "../val_img_data")
     
     if model:
-        vqa = VQA(datetime.now() , model, train_dset, val_dset=val_dset)
+        vqa = VQA(datetime.now(), model, args.decoder_type, train_dset, val_dset=val_dset)
         vqa.train()
