@@ -7,7 +7,7 @@ from datetime import datetime
 import numpy as np
 import torch
 import torch.nn as nn
-from pytorchtools import EarlyStopping
+from src.utils import EarlyStopping
 from src.constants import CHECKPOINTS_DIR, LXMERT_HIDDEN_SIZE
 from src.data.datasets import GenVQADataset, pad_batched_sequence
 from src.decoders.greedy_decoder import GreedyDecoder
@@ -51,7 +51,7 @@ class VQA:
         pad_idx = 0
         self.criterion = nn.CrossEntropyLoss(ignore_index=pad_idx)
         self.optim = torch.optim.Adam(list(self.model.parameters()), lr=lr)
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, step_size=5, gamma=0.1)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, step_size=10, gamma=0.5)
         self.early_stopping = EarlyStopping(patience=3, verbose=True)
         
         self.f1_score = F1Score(num_classes=self.model.Tokenizer.vocab_size, ignore_index=pad_idx, top_k=1, mdmc_average='samplewise')
