@@ -36,8 +36,8 @@ class MetricCalculator():
         # preds_tokenized = [self.tokenizer(pred, return_tensors="pt")['input_ids'].squeeze()[1:-1].cuda() for pred in preds]
         # ref_tokenized = [self.tokenizer(ref, return_tensors="pt")['input_ids'].squeeze()[1:-1].cuda() for ref in references]
         
-        preds_emb = [self.embedding_layer(torch.tensor(s).cuda()) for s in preds_ids]
-        ref_emb = [self.embedding_layer(torch.tensor(s).cuda()) for s in ref_ids]
+        preds_emb = [self.embedding_layer(torch.tensor(s, dtype=torch.int).cuda()) for s in preds_ids]
+        ref_emb = [self.embedding_layer(torch.tensor(s, dtype=torch.int).cuda()) for s in ref_ids]
         
         for key in metrics:
             result[key] = metrics[key].compute(preds_emb, ref_emb)
@@ -57,7 +57,7 @@ class MetricCalculator():
         result[self.BLEU.name] = self.BLEU.compute()
         result[self.ROUGE.name] = self.ROUGE.compute()
         result[self.METEOR.name] = self.METEOR.compute()
-        result[self.BERTSCORE.name] = self.BERTSCORE.compute(lang='en')
+        result[self.BERTSCORE.name] = self.BERTSCORE.compute(model_type="microsoft/deberta-xlarge-mnli")
         
         avg_bert_keys = ['precision', 'recall', 'f1']
         
