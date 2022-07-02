@@ -1,4 +1,5 @@
 import argparse
+from cgi import test
 import json
 import os
 import random
@@ -118,10 +119,6 @@ class VQA:
                 print("Early stopping")
                 break
         
-        if(self.train_dset):
-            self.load_model("BEST")
-            self.evaluate(key="VAL")
-            self.evaluate(dset=self.train_dset, key="TEST")
         
         
     def __evaluate_validation(self, metric_calculator=False, dset=None):
@@ -286,3 +283,6 @@ if __name__ == "__main__":
     if model:
         vqa = VQA(datetime.now(), model, args.decoder_type, train_dset, val_dset=val_dset, test_dset=test_dset)
         vqa.train()
+        vqa.load_model("BEST")
+        vqa.evaluate(val_dset, "VAL")
+        vqa.evaluate(test_dset, "TEST")
