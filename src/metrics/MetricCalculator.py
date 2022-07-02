@@ -58,10 +58,18 @@ class MetricCalculator():
         result[self.ROUGE.name] = self.ROUGE.compute()
         result[self.METEOR.name] = self.METEOR.compute()
         result[self.BERTSCORE.name] = self.BERTSCORE.compute(lang='en')
+        
+        avg_bert_keys = ['precision', 'recall', 'f1']
+        
+        for key in avg_bert_keys:
+            result[self.BERTSCORE.name][key] = sum(result[self.BERTSCORE.name][key]) / len(result[self.BERTSCORE.name][key])
+        
         average_scores = []
         extrema_scores = []
         greedy_scores = []
         cider_scores = []
+        
+        
         #compute other metrics manually
         for item in self.accumelated_instances:
             average_scores.append(item['average_score'].mean)

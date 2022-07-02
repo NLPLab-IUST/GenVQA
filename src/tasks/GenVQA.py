@@ -26,6 +26,7 @@ class VQA:
                  decoder_type,
                  train_dset,
                  val_dset=None,
+                 test_dset=None,
                  tokenizer=None,
                  use_cuda=True,
                  batch_size=32,
@@ -44,7 +45,8 @@ class VQA:
         
         self.train_loader = DataLoader(train_dset, batch_size=batch_size, shuffle=True, drop_last=True, collate_fn=pad_batched_sequence)
         self.val_loader = DataLoader(val_dset, batch_size=batch_size, shuffle=False, drop_last=True, collate_fn=pad_batched_sequence)
-        
+        self.train_dset = train_dset
+
         if(use_cuda):
             self.model = self.model.cuda()
             
@@ -115,24 +117,27 @@ class VQA:
             if self.early_stopping.early_stop:
                 print("Early stopping")
                 break
-   
         
-        if(self.val_loader):
-            val_loss, val_acc, val_f1, other_metrics = self.__evaluate_validation(metric_calculator=True)
-            with open(os.path.join(self.save_dir, "validation_results.json"), 'w') as fp: 
-                json.dump(other_metrics, fp)
-    
-    def __evaluate_validation(self, metric_calculator=False):
+        if(self.train_dset):
+            self.load_model("BEST")
+            self.evaluate(key="VAL")
+            self.evaluate(dset=self.train_dset, key="TEST")
+        
+        
+    def __evaluate_validation(self, metric_calculator=False, dset=None):
         print("Validation Evaluations: ")
         self.model.eval()
         val_loss = val_acc = val_f1 = 0
         other_metrics = None
-
+        if(dset):
+            loader = DataLoader(val_dset, batch_size=self.batch_size, shuffle=False, drop_last=True, collate_fn=pad_batched_sequence)
+        else:
+            loader = self.val_loader
         # define metric calculator if we need extra metric calculation
         if(metric_calculator):
             metric_calculator = MetricCalculator(self.model.embedding_layer) 
         
-        for i, (input_ids, feats, boxes, masks, target, target_masks) in enumerate(pbar := tqdm(self.val_loader, total=len(self.val_loader))):
+        for i, (input_ids, feats, boxes, masks, target, target_masks) in enumerate(pbar := tqdm(loader, total=len(loader))):
             #calculate losses, and logits + necessary metrics for showin during training
             loss, val_acc_batch, val_f1_batch, logits = self.__step(input_ids, feats, boxes, masks, target, target_masks, val=True)
             
@@ -156,9 +161,9 @@ class VQA:
                 #it accumalates values to be calculated later
                 metric_calculator.add_batch(pred_sentences_decoded, ref_sentences_decoded, preds_sentences_ids, ref_sentences_ids)
 
-        val_loss /= len(self.val_loader)
-        val_acc /= len(self.val_loader)
-        val_f1 /= len(self.val_loader)
+        val_loss /= len(loader)
+        val_acc /= len(loader)
+        val_f1 /= len(loader)
         
         #calculate metrics based on the accumelated metrics during evaluation!
         if(metric_calculator):
@@ -189,7 +194,25 @@ class VQA:
 
         assert batch_acc <= 1
         return loss, batch_acc, f1_score, logits
-                
+
+    def evaluate(self, dset, key):
+        _ , val_acc, val_f1, other_metrics = self.__evaluate_validation(metric_calculator=True, dset= dset)
+        other_metrics["accuracy"] = val_acc
+        other_metrics['f1'] = val_f1
+        with open(os.path.join(self.save_dir, f"evaluation_{key}.json"), 'w') as fp:
+            json.dump(other_metrics, fp)
+    
+
+    def load_model(self, key):
+        path = os.path.join(self.save_dir, f"{self.model.name}.{key}.torch")
+        if(os.path.exists(path)):
+            Logger.log(f"Train_{self.train_date_time}", f"Couldn't load model from {path} ")
+            return
+
+        state_dict = torch.load(path)
+        self.model.load_state_dict(state_dict)
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     
@@ -217,8 +240,6 @@ def parse_args():
     parser.add_argument("--num_transformer_layers", default=6, type=int)
 
     return parser.parse_args()
-
-
 
 
 if __name__ == "__main__":
@@ -251,11 +272,17 @@ if __name__ == "__main__":
         annotations = "../fsvqa_data_train_full/annotations.pickle", 
         questions = "../fsvqa_data_train_full/questions.pickle", 
         img_dir = "../img_data")
+    
     val_dset = GenVQADataset(model.Tokenizer, 
         annotations = "../fsvqa_data_val_full/annotations.pickle", 
         questions = "../fsvqa_data_val_full/questions.pickle", 
         img_dir = "../val_img_data")
     
+    test_dset = GenVQADataset(model.Tokenizer,
+        annotations = "../fsvqa_data_test_full/annotations.pickle", 
+        questions = "../fsvqa_data_test_full/questions.pickle", 
+        img_dir = "../val_img_data")
+    
     if model:
-        vqa = VQA(datetime.now(), model, args.decoder_type, train_dset, val_dset=val_dset)
+        vqa = VQA(datetime.now(), model, args.decoder_type, train_dset, val_dset=val_dset, test_dset=test_dset)
         vqa.train()
