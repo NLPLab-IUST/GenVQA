@@ -18,9 +18,9 @@ class FSVQAManager:
         self.annotations_filename = "annotations.pickle"
         self.questions_filename = "questions.pickle"
     
-    def select_and_save(self, k, output_dir):
+    def select_and_save(self, s, k, output_dir):
         os.makedirs(output_dir, exist_ok=True)
-        mini_data = random.choices(self.annotations['annotations'], k=k)
+        mini_data = self.annotations['annotations'][s: s + k]
         chosen_questions = { }
         for each in mini_data:
             chosen_questions[each['question_id']] = self.questions[each['question_id']]
@@ -38,8 +38,9 @@ if __name__ == "__main__":
     parser.add_argument('--annotations', help='annotations path')
     parser.add_argument('--questions', help='questions path')
     parser.add_argument('--k', help='number of instances')
+    parser.add_argument('--s', help='start index')
     parser.add_argument('--out_dir', help='output directory')
     args = parser.parse_args()
     fsvqa_manager = FSVQAManager(args.annotations, args.questions)
-    fsvqa_manager.select_and_save(int(args.k), args.out_dir)
+    fsvqa_manager.select_and_save(int(args.s), int(args.k), args.out_dir)
     Logger.Instance.log(module_name, f"Generated new pickle files at {args.out_dir} with {args.k} instances.")

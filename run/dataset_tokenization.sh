@@ -1,1 +1,1 @@
-python -m src.data.raw.fsvqa_tokenization "@$"
+python -m src.data.raw.fsvqa_tokenization "$@"
