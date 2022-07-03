@@ -40,16 +40,19 @@ class Encoder_AttnRNN(torch.nn.Module):
                                 output_size=self.Tokenizer.vocab_size,
                                 prob=prob)
             self.name = f"{encoder_type}_{attn_type}_attn({attn_method})_{rnn_type}"
-            
+        
+        self.start_token = 101 # <cls>
+        self.end_token = 102 # <sep>
+        
         print(self.name)
         
-    def forward(self, input_ids, visual_feats, visual_pos, attention_mask, answer_tokenized, teacher_force_ratio=0.5):
+    def forward(self, input_ids, visual_feats, visual_pos, attention_mask, answer_tokenized = None, teacher_force_ratio=0.5,  max_sequence_length=50):
         """
             Train phase forward propagation
         """
 
-        batch_size = answer_tokenized.shape[1]
-        target_len = answer_tokenized.shape[0]
+        batch_size = input_ids.shape[0]
+        target_len = max_sequence_length if answer_tokenized is None else answer_tokenized.shape[0]
         target_vocab_size = self.Tokenizer.vocab_size
         
         outputs = torch.zeros(target_len, batch_size, target_vocab_size).cuda()
@@ -92,11 +95,10 @@ class Encoder_AttnRNN(torch.nn.Module):
         elif self.rnn.rnn_type == 'gru':
             hidden = h.contiguous()
             
-        # Grab the first input to the Decoder which will be <SOS> token
-        x = answer_tokenized[0]
+        # Send <cls> token to decoder
+        x =  torch.tensor([self.start_token]*batch_size).cuda()
         
         for t in range(1, target_len):
-            # Use previous hidden context from encoder at start
             output, hidden, attn_weights = self.rnn(x, hidden, encoder_states)
 
             # Store next output prediction
@@ -114,7 +116,6 @@ class Encoder_AttnRNN(torch.nn.Module):
             x = answer_tokenized[t] if random.random() < teacher_force_ratio else best_guess
 
         return outputs
-
 
     def save(self, dir_, epoch):
         if not(os.path.exists(dir_)):

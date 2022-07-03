@@ -32,7 +32,8 @@ class VQA:
                  epochs=200,
                  lr=0.005,
                  log_every=1,
-                 save_every=50):
+                 save_every=50, 
+                 max_sequence_length=50):
         
         self.model = model
         self.epochs = epochs
@@ -41,6 +42,7 @@ class VQA:
         self.train_date_time = train_date
         self.save_every = save_every
         self.decoder_type = decoder_type
+        self.max_sequence_length = max_sequence_length
         
         self.train_loader = DataLoader(train_dset, batch_size=batch_size, shuffle=True, drop_last=True, collate_fn=pad_batched_sequence)
         self.val_loader = DataLoader(val_dset, batch_size=batch_size, shuffle=False, drop_last=True, collate_fn=pad_batched_sequence)
@@ -51,7 +53,7 @@ class VQA:
         pad_idx = 0
         self.criterion = nn.CrossEntropyLoss(ignore_index=pad_idx)
         self.optim = torch.optim.Adam(list(self.model.parameters()), lr=lr)
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, step_size=10, gamma=0.5)
+        # self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, step_size=10, gamma=0.5)
         self.early_stopping = EarlyStopping(patience=5, verbose=True)
         
         self.f1_score = F1Score(num_classes=self.model.Tokenizer.vocab_size, ignore_index=pad_idx, top_k=1, mdmc_average='samplewise')
@@ -109,7 +111,7 @@ class VQA:
             if(epoch % self.save_every == self.save_every - 1):
                 self.model.save(self.save_dir, epoch)
 
-            self.scheduler.step()    
+            # self.scheduler.step()    
             
             self.early_stopping(val_loss, self.model)
             if self.early_stopping.early_stop:
