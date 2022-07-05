@@ -96,7 +96,7 @@ if __name__ == '__main__':
     preds = [['the cat is on the mat', 'the cat is on the mat'],  ['the cat is on the mat', 'the cat is on the mat']]
     target = [['there is a catty on the matew', 'a cat is on the mat'], ['there is a catty on the matew', 'a cat is on the mat']]
     for pred, ref in zip(preds, target):
-        preds_tokenized = [tokenizer(predd)['input_ids'].squeeze()[1:-1] for predd in pred]
-        ref_tokenized = [tokenizer(reff)['input_ids'].squeeze()[1:-1] for reff in ref]
+        preds_tokenized = [tokenizer(predd)['input_ids'][1:-1] for predd in pred]
+        ref_tokenized = [tokenizer(reff)['input_ids'][1:-1] for reff in ref]
         mc.add_batch(pred, ref, preds_tokenized, ref_tokenized)
     print(mc.compute())

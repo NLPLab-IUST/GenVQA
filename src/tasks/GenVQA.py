@@ -81,8 +81,7 @@ class VQA:
             if epoch % self.log_every == self.log_every - 1:
                 val_loss = None
                 val_acc = None
-                qualification_metics = []
-                
+                                
                 # validate if valiation loader is not none
                 if(self.val_loader):
                     val_loss, val_acc, val_f1, _ = self.__evaluate_validation()
@@ -194,8 +193,8 @@ class VQA:
 
     def evaluate(self, dset, key):
         _ , val_acc, val_f1, other_metrics = self.__evaluate_validation(metric_calculator=True, dset= dset)
-        other_metrics["accuracy"] = val_acc
-        other_metrics['f1'] = val_f1
+        other_metrics["accuracy"] = val_acc.cpu().tolist()
+        other_metrics['f1'] = val_f1.cpu().tolist()
         with open(os.path.join(self.save_dir, f"evaluation_{key}.json"), 'w') as fp:
             json.dump(other_metrics, fp)
     
