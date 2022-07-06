@@ -37,20 +37,21 @@ class Encoder_Transformer(nn.Module):
         self.nheads = nheads
         self.hidden_size = hidden_size
         self.PADDING_VALUE = 0
-        
+        self.START_TOKEN = 101
+        self.SEP_TOKEN = 102 
         #Linear layer to output vocabulary size
         self.Linear = nn.Linear(hidden_size, self.Tokenizer.vocab_size)
         
         self.name = f"{encoder_type}_{nheads}heads_{decoder_layers}_transformer"
         print(self.name)
     
-    def forward(self, input_ids, visual_feats, visual_pos, attention_mask, answer_tokenized):
+    def forward(self, input_ids, visual_feats, visual_pos, attention_mask, answer_tokenized=None, max_seq_len=50):
         """
             Train phase forward propagation
         """
         
         tgt_len = answer_tokenized.shape[0]
-        
+        batch_size = input_ids.shape[0]
         # encode question and image with lxmert
         if self.encoder_type == 'lxmert':
             kwargs = {"input_ids" : input_ids,
@@ -77,30 +78,72 @@ class Encoder_Transformer(nn.Module):
             memory_key_padding_mask = (input_ids == self.PADDING_VALUE)
             memory_key_padding_mask = F.pad(input=memory_key_padding_mask, pad=(0, visual_feats.shape[1], 0, 0), mode='constant', value=0)
             # (batch_size, text_seq_length+image_seq_length)
-        
-        answer_embeddings = self.embedding_layer(answer_tokenized)
-        # answer embeddings shape: (seq_len, N, embedding_size)
-        # embedding_size is 768 in LXMERT
+        if answer_tokenized:
+            answer_embeddings = self.embedding_layer(answer_tokenized)
+            # answer embeddings shape: (seq_len, N, embedding_size)
+            # embedding_size is 768 in LXMERT
 
-        # target masks to consider padding values in target embeddings (answers)
-        tgt_key_padding_mask = (answer_tokenized.permute(1, 0) == self.PADDING_VALUE)
+            # target masks to consider padding values in target embeddings (answers)
+            tgt_key_padding_mask = (answer_tokenized.permute(1, 0) == self.PADDING_VALUE)
 
-        # target attention masks to avoid future tokens in our predictions
-        # Adapted from PyTorch source code:
-        # https://github.com/pytorch/pytorch/blob/176174a68ba2d36b9a5aaef0943421682ecc66d4/torch/nn/modules/transformer.py#L130
-        tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt_len).cuda()        
-        
+            # target attention masks to avoid future tokens in our predictions
+            # Adapted from PyTorch source code:
+            # https://github.com/pytorch/pytorch/blob/176174a68ba2d36b9a5aaef0943421682ecc66d4/torch/nn/modules/transformer.py#L130
+            tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt_len).cuda()        
+            
 
-        # decode sentence and lxmert output to generate answer
-        output = self.Decoder( answer_embeddings, 
-                               encoder_output,
-                               tgt_mask=tgt_mask,
-                               tgt_key_padding_mask = tgt_key_padding_mask, 
-                               memory_key_padding_mask = memory_key_padding_mask)
-        #output shape: (tgt_seq_len, N, hidden_size)
+            # decode sentence and encoder output to generate answer
+            output = self.Decoder( answer_embeddings, 
+                                encoder_output,
+                                tgt_mask=tgt_mask,
+                                tgt_key_padding_mask = tgt_key_padding_mask, 
+                                memory_key_padding_mask = memory_key_padding_mask)
+            #output shape: (tgt_seq_len, N, hidden_size)
+
+            output = self.Linear(output)
+            #output shape: (tgt_seq_len, N, vocab_size)
         
-        output = self.Linear(output)
-        #output shape: (tgt_seq_len, N, vocab_size)
+        else:
+            # generatoin phase
+            x = torch.tensor([[self.START_TOKEN] * batch_size]).cuda()
+            # x shape: (1, N)
+            target_vocab_size = self.Tokenizer.vocab_size
+
+            outputs = torch.zeros(max_seq_len, batch_size, target_vocab_size).cuda()
+
+            for i in range(max_seq_len):
+                tgt_len = x.shape[0]
+                answer_embeddings = self.embedding_layer(x)
+                tgt_key_padding_mask = (x.permute(1, 0) == self.PADDING_VALUE)
+                tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt_len).cuda()
+                output = self.Decoder( 
+                                answer_embeddings, 
+                                encoder_output,
+                                tgt_mask=tgt_mask,
+                                tgt_key_padding_mask = tgt_key_padding_mask, 
+                                memory_key_padding_mask = memory_key_padding_mask) 
+                #output shape: (tgt_seq_len, N, hidden_size)
+                
+                # chose the last word of sequence Based on CodeXGLUE project
+                # https://github.com/microsoft/CodeXGLUE/blob/main/Code-Code/code-refinement/code/model.py
+                output = output[-1, :, :].unsqueeze(0)
+                #output shape (1, N, hidden_size)
+                
+
+                output = self.Linear(output)
+                #output shape: (1, N, vocab_size)
+                
+                outputs[i] = output
+                
+                #consider best guesses in a greeedy form! Better to implement with beam search
+                output = torch.argmax(output, dim = -1)
+                #output shape: (1, N)
+
+                #concat new generated answer to x.
+                x = torch.cat([x, output], dim=0)
+                # x shape: (i + 1, N)
+            
+            output = outputs
 
         return output
 
