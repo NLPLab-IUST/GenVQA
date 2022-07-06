@@ -77,7 +77,7 @@ class Encoder_Transformer(nn.Module):
             memory_key_padding_mask = (input_ids == self.PADDING_VALUE)
             memory_key_padding_mask = F.pad(input=memory_key_padding_mask, pad=(0, visual_feats.shape[1], 0, 0), mode='constant', value=0)
             # (batch_size, text_seq_length+image_seq_length)
-        if answer_tokenized:
+        if answer_tokenized is not None:
             tgt_len = answer_tokenized.shape[0]
 
             answer_embeddings = self.embedding_layer(answer_tokenized)
