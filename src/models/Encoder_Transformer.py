@@ -50,7 +50,6 @@ class Encoder_Transformer(nn.Module):
             Train phase forward propagation
         """
         
-        tgt_len = answer_tokenized.shape[0]
         batch_size = input_ids.shape[0]
         # encode question and image with lxmert
         if self.encoder_type == 'lxmert':
@@ -79,6 +78,8 @@ class Encoder_Transformer(nn.Module):
             memory_key_padding_mask = F.pad(input=memory_key_padding_mask, pad=(0, visual_feats.shape[1], 0, 0), mode='constant', value=0)
             # (batch_size, text_seq_length+image_seq_length)
         if answer_tokenized:
+            tgt_len = answer_tokenized.shape[0]
+
             answer_embeddings = self.embedding_layer(answer_tokenized)
             # answer embeddings shape: (seq_len, N, embedding_size)
             # embedding_size is 768 in LXMERT
