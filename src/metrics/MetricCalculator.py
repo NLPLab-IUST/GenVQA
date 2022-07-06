@@ -36,8 +36,8 @@ class MetricCalculator():
         # preds_tokenized = [self.tokenizer(pred, return_tensors="pt")['input_ids'].squeeze()[1:-1].cuda() for pred in preds]
         # ref_tokenized = [self.tokenizer(ref, return_tensors="pt")['input_ids'].squeeze()[1:-1].cuda() for ref in references]
         
-        preds_emb = [self.embedding_layer(torch.tensor(s).cuda()) for s in preds_ids]
-        ref_emb = [self.embedding_layer(torch.tensor(s).cuda()) for s in ref_ids]
+        preds_emb = [self.embedding_layer(torch.tensor(s, dtype=torch.int).cuda()) for s in preds_ids]
+        ref_emb = [self.embedding_layer(torch.tensor(s, dtype=torch.int).cuda()) for s in ref_ids]
         
         for key in metrics:
             result[key] = metrics[key].compute(preds_emb, ref_emb)
@@ -57,11 +57,19 @@ class MetricCalculator():
         result[self.BLEU.name] = self.BLEU.compute()
         result[self.ROUGE.name] = self.ROUGE.compute()
         result[self.METEOR.name] = self.METEOR.compute()
-        result[self.BERTSCORE.name] = self.BERTSCORE.compute(lang='en')
+        result[self.BERTSCORE.name] = self.BERTSCORE.compute(model_type="microsoft/deberta-xlarge-mnli")
+        
+        avg_bert_keys = ['precision', 'recall', 'f1']
+        
+        for key in avg_bert_keys:
+            result[self.BERTSCORE.name][key] = sum(result[self.BERTSCORE.name][key]) / len(result[self.BERTSCORE.name][key])
+        
         average_scores = []
         extrema_scores = []
         greedy_scores = []
         cider_scores = []
+        
+        
         #compute other metrics manually
         for item in self.accumelated_instances:
             average_scores.append(item['average_score'].mean)
@@ -88,7 +96,7 @@ if __name__ == '__main__':
     preds = [['the cat is on the mat', 'the cat is on the mat'],  ['the cat is on the mat', 'the cat is on the mat']]
     target = [['there is a catty on the matew', 'a cat is on the mat'], ['there is a catty on the matew', 'a cat is on the mat']]
     for pred, ref in zip(preds, target):
-        preds_tokenized = [tokenizer(predd)['input_ids'].squeeze()[1:-1] for predd in pred]
-        ref_tokenized = [tokenizer(reff)['input_ids'].squeeze()[1:-1] for reff in ref]
+        preds_tokenized = [tokenizer(predd)['input_ids'][1:-1] for predd in pred]
+        ref_tokenized = [tokenizer(reff)['input_ids'][1:-1] for reff in ref]
         mc.add_batch(pred, ref, preds_tokenized, ref_tokenized)
     print(mc.compute())
