@@ -6,6 +6,8 @@ from torch import nn
 import torch.nn.functional as F
 from transformers import LxmertModel, LxmertTokenizer, VisualBertModel, BertTokenizer
 
+from utils import PositionalEncoder
+
 class Encoder_Transformer(nn.Module):
     def __init__(self, encoder_type, nheads, decoder_layers, hidden_size, freeze_encoder=True):
         super().__init__()
@@ -31,6 +33,8 @@ class Encoder_Transformer(nn.Module):
         transformer_layer = nn.TransformerDecoderLayer(d_model=hidden_size, nhead=nheads)
         self.Decoder = nn.TransformerDecoder(transformer_layer, num_layers=decoder_layers)
 
+        self.pe = PositionalEncoder(self.hidden_size, dropout=0.1,max_len=1000)
+        
         self.embedding_layer = self.encoder.embeddings.word_embeddings
         self.output_size = self.Tokenizer.vocab_size
         self.decoder_layers = decoder_layers
@@ -83,7 +87,8 @@ class Encoder_Transformer(nn.Module):
             answer_embeddings = self.embedding_layer(answer_tokenized)
             # answer embeddings shape: (seq_len, N, embedding_size)
             # embedding_size is 768 in LXMERT
-
+            positions = self.pe(answer_embeddings)
+            
             # target masks to consider padding values in target embeddings (answers)
             tgt_key_padding_mask = (answer_tokenized.permute(1, 0) == self.PADDING_VALUE)
 
@@ -94,7 +99,7 @@ class Encoder_Transformer(nn.Module):
             
 
             # decode sentence and encoder output to generate answer
-            output = self.Decoder( answer_embeddings, 
+            output = self.Decoder(positions, 
                                 encoder_output,
                                 tgt_mask=tgt_mask,
                                 tgt_key_padding_mask = tgt_key_padding_mask, 
@@ -115,10 +120,11 @@ class Encoder_Transformer(nn.Module):
             for i in range(max_seq_len):
                 tgt_len = x.shape[0]
                 answer_embeddings = self.embedding_layer(x)
+                positions = self.pe(answer_embeddings)
                 tgt_key_padding_mask = (x.permute(1, 0) == self.PADDING_VALUE)
                 tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt_len).cuda()
                 output = self.Decoder( 
-                                answer_embeddings, 
+                                positions, 
                                 encoder_output,
                                 tgt_mask=tgt_mask,
                                 tgt_key_padding_mask = tgt_key_padding_mask, 
@@ -153,4 +159,3 @@ class Encoder_Transformer(nn.Module):
             os.makedirs(dir_, exist_ok=True)
         path = os.path.join(dir_, f"{self.name}.{epoch}.torch")
         torch.save(self.state_dict(), path)
-
