@@ -6,7 +6,7 @@ from torch import nn
 import torch.nn.functional as F
 from transformers import LxmertModel, LxmertTokenizer, VisualBertModel, BertTokenizer
 
-from utils import PositionalEncoder
+from src.utils import PositionalEncoder
 
 class Encoder_Transformer(nn.Module):
     def __init__(self, encoder_type, nheads, decoder_layers, hidden_size, freeze_encoder=True):
