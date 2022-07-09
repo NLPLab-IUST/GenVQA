@@ -235,7 +235,7 @@ class VQA:
         model_predictions = [{"question":question, "ref answer": ref_answer, "pred answer":pred_answer} 
                              for question, ref_answer, pred_answer in zip(questions, ref_sentences, pred_sentences)]
               
-        with open(os.path.join(os.path.split(model_path), f"model_prediction_{key}.json"), 'w') as fp:
+        with open(os.path.join(os.path.split(model_path)[0], f"model_prediction_{key}.json"), 'w') as fp:
             json.dump(model_predictions, fp)
                 
 
