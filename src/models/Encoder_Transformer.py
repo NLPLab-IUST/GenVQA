@@ -33,7 +33,7 @@ class Encoder_Transformer(nn.Module):
         transformer_layer = nn.TransformerDecoderLayer(d_model=hidden_size, nhead=nheads)
         self.Decoder = nn.TransformerDecoder(transformer_layer, num_layers=decoder_layers)
 
-        self.pe = PositionalEncoder(hidden_size, dropout=0.1,max_len=1000)
+        self.pe = PositionalEncoder(hidden_size, dropout=0.1,max_len=200)
         
         self.embedding_layer = self.encoder.embeddings.word_embeddings
         self.output_size = self.Tokenizer.vocab_size

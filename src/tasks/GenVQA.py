@@ -18,6 +18,7 @@ from src.models import Encoder_AttnRNN, Encoder_RNN, Encoder_Transformer
 from torch.utils.data.dataloader import DataLoader
 from torchmetrics import Accuracy, F1Score
 from tqdm import tqdm
+from transformers import AdamW
 
 
 class VQA:
@@ -28,14 +29,14 @@ class VQA:
                  train_dset,
                  val_dset=None,
                  test_dset=None,
-                 tokenizer=None,
                  use_cuda=True,
                  batch_size=32,
                  epochs=200,
                  lr=0.005,
                  log_every=1,
                  save_every=50, 
-                 max_sequence_length=50):
+                 max_sequence_length=50, 
+                 optimizer = 'adam'):
         
         self.model = model
         self.epochs = epochs
@@ -48,14 +49,20 @@ class VQA:
         
         self.train_loader = DataLoader(train_dset, batch_size=batch_size, shuffle=True, drop_last=True, collate_fn=pad_batched_sequence)
         self.val_loader = DataLoader(val_dset, batch_size=batch_size, shuffle=False, drop_last=True, collate_fn=pad_batched_sequence)
-        self.train_dset = train_dset
 
         if(use_cuda):
             self.model = self.model.cuda()
             
         pad_idx = 0
         self.criterion = nn.CrossEntropyLoss(ignore_index=pad_idx)
-        self.optim = torch.optim.Adam(list(self.model.parameters()), lr=lr)
+        
+        if optimizer == 'adam':
+            self.optim = torch.optim.Adam(list(self.model.parameters()), lr=lr)
+        elif optimizer =='sgd':
+            self.optim = torch.optim.SGD(list(self.model.parameters()), lr=lr)
+        elif optimizer =='adamw':
+            self.optim = AdamW(list(self.model.parameters()), lr=lr)
+            
         # self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, step_size=10, gamma=0.5)
         self.early_stopping = EarlyStopping(patience=5, verbose=True)
         
@@ -70,23 +77,18 @@ class VQA:
         running_loss = running_accuracy = running_accuracy_best = running_f1 = 0
         for epoch in range(self.epochs):
             self.model.train()
-            for i, (input_ids, feats, boxes, masks, target, target_masks) in enumerate(pbar := tqdm(self.train_loader, total=len(self.train_loader))):
+            for i, (input_ids, feats, boxes, masks, target) in enumerate(pbar := tqdm(self.train_loader, total=len(self.train_loader))):
 
                 pbar.set_description(f"Epoch {epoch}")
-                loss, batch_acc, batch_f1, logits = self.__step(input_ids, feats, boxes, masks, target, target_masks, val=False)  
+                loss, batch_acc, batch_f1, _ = self.__step(input_ids, feats, boxes, masks, target, val=False)  
                 
                 running_loss += loss.item()
                 running_accuracy += batch_acc.item()
                 running_f1 += batch_f1
                 pbar.set_postfix(loss=running_loss/(i+1), accuracy=running_accuracy/(i+1))
 
-            if epoch % self.log_every == self.log_every - 1:
-                val_loss = None
-                val_acc = None
-                                
-                # validate if valiation loader is not none
-                if(self.val_loader):
-                    val_loss, val_acc, val_f1, _ = self.__evaluate_validation()
+            if epoch % self.log_every == self.log_every - 1:                                
+                val_loss, val_acc, val_f1, _ = self.__evaluate_validation()
                 
                 total_data_iterated = self.log_every * len(self.train_loader)
                 running_loss /= total_data_iterated
@@ -94,16 +96,10 @@ class VQA:
                 running_f1 /= total_data_iterated
                 
                 #logging results
-                if(self.val_loader):
-                    Logger.log(f"Train_{self.train_date_time}", f"Training epoch {epoch}: Train loss {running_loss:.3f}. Val loss: {val_loss:.3f}."
-                                + f" Train accuracy {running_accuracy:.3f}. Val accuracy: {val_acc:.3f}. Train F1-Score: {running_f1}. Validation F1-Score: {val_f1}")
-                    print(f"F1 Score: Train {running_f1}, Validation: {val_f1}")
-                else:
-                    Logger.log(f"Train_{self.train_date_time}", f"Training epoch {epoch}: Train loss {running_loss:.3f}."
-                                + f" Train accuracy {running_accuracy:.3f}. Train F1-Score: {running_f1}")
-                    print(f"F1 Score: Train {running_f1}")
+                Logger.log(f"Train_{self.train_date_time}", f"Training epoch {epoch}: Train loss {running_loss:.3f}. Val loss: {val_loss:.3f}."
+                            + f" Train accuracy {running_accuracy:.3f}. Val accuracy: {val_acc:.3f}. Train F1-Score: {running_f1}. Validation F1-Score: {val_f1}")
+                print(f"F1 Score: Train {running_f1}, Validation: {val_f1}")
 
-                
                 if(running_accuracy > running_accuracy_best):
                     self.model.save(self.save_dir, "BEST")
                     running_accuracy_best = running_accuracy
@@ -115,29 +111,29 @@ class VQA:
 
             # self.scheduler.step()    
             
-            self.early_stopping(val_loss, self.model)
+            self.early_stopping(val_loss)
             if self.early_stopping.early_stop:
                 print("Early stopping")
                 break
-        
-        
         
     def __evaluate_validation(self, metric_calculator=False, dset=None):
         print("Validation Evaluations: ")
         self.model.eval()
         val_loss = val_acc = val_f1 = 0
-        other_metrics = None
+
         if(dset):
-            loader = DataLoader(val_dset, batch_size=self.batch_size, shuffle=False, drop_last=True, collate_fn=pad_batched_sequence)
+            loader = DataLoader(dset, batch_size=self.batch_size, shuffle=False, drop_last=True, collate_fn=pad_batched_sequence)
         else:
             loader = self.val_loader
         # define metric calculator if we need extra metric calculation
         if(metric_calculator):
-            metric_calculator = MetricCalculator(self.model.embedding_layer) 
+            metric_calculator = MetricCalculator(self.model.embedding_layer)
+            # we used greedy decoder as a temporary decode. 
+            decoder = GreedyDecoder(self.model.Tokenizer)
         
-        for i, (input_ids, feats, boxes, masks, target, target_masks) in enumerate(pbar := tqdm(loader, total=len(loader))):
+        for i, (input_ids, feats, boxes, masks, target) in enumerate(pbar := tqdm(loader, total=len(loader))):
             #calculate losses, and logits + necessary metrics for showin during training
-            loss, val_acc_batch, val_f1_batch, logits = self.__step(input_ids, feats, boxes, masks, target, target_masks, val=True)
+            loss, val_acc_batch, val_f1_batch, logits = self.__step(input_ids, feats, boxes, masks, target, val=True)
             
             val_loss += loss.item()
             val_acc += val_acc_batch.item()
@@ -146,8 +142,6 @@ class VQA:
             
             #only when we need extra metrics for evaluation!
             if(metric_calculator):
-                # we used greedy decoder as a temporary decode. 
-                decoder = GreedyDecoder(self.model.Tokenizer)
                 # using argmax to find the best token!
                 preds_tokenized = decoder.decode_from_logits(logits)
 
@@ -164,13 +158,11 @@ class VQA:
         val_f1 /= len(loader)
         
         #calculate metrics based on the accumelated metrics during evaluation!
-        if(metric_calculator):
-            other_metrics = metric_calculator.compute()
+        other_metrics = metric_calculator.compute() if metric_calculator else None
         
         return val_loss, val_acc, val_f1, other_metrics
         
-    def __step(self, input_ids, feats, boxes, masks, target, target_masks, val=False):
-        
+    def __step(self, input_ids, feats, boxes, masks, target, val=False):
         if self.decoder_type in ['rnn','attn-rnn']:
             teacher_force_ratio = 0 if val else 0.5       
             logits = self.model(input_ids, feats, boxes, masks, target, teacher_force_ratio)
@@ -190,7 +182,6 @@ class VQA:
         f1_score = self.f1_score(logits.permute(1,2,0), target.permute(1,0))
         batch_acc = self.accuracy(logits.permute(1,2,0), target.permute(1,0))
 
-        assert batch_acc <= 1
         return loss, batch_acc, f1_score, logits
 
     def evaluate(self, dset, key):
@@ -200,19 +191,59 @@ class VQA:
         with open(os.path.join(self.save_dir, f"evaluation_{key}.json"), 'w') as fp:
             json.dump(other_metrics, fp)
     
-
     def load_model(self, key):
         path = os.path.join(self.save_dir, f"{self.model.name}.{key}.torch")
-        if(os.path.exists(path)):
+        if not (os.path.exists(path)):
             Logger.log(f"Train_{self.train_date_time}", f"Couldn't load model from {path} ")
             return
 
         state_dict = torch.load(path)
         self.model.load_state_dict(state_dict)
+        
+    def predict(self, model_path, dset, key):
+        #load model
+        if os.path.exists(model_path) == False:
+            Logger.log(f"Prediction_{self.train_date_time}", f"Couldn't load model from {model_path} ")
+            return
 
+        state_dict = torch.load(model_path)
+        self.model.load_state_dict(state_dict)
+        
+        # load dataset
+        if(dset):
+            loader = DataLoader(dset, batch_size=self.batch_size, shuffle=False, drop_last=True, collate_fn=pad_batched_sequence)
+        else:
+            loader = self.val_loader
+            
+        self.model.eval()
+        decoder = GreedyDecoder(self.model.Tokenizer)
+        
+        for i, (input_ids, feats, boxes, masks, target) in enumerate(pbar := tqdm(loader, total=len(loader))):
+            loss, val_acc_batch, val_f1_batch, logits = self.__step(input_ids, feats, boxes, masks, target, val=True)
+            
+            val_loss += loss.item()
+            val_acc += val_acc_batch.item()
+            val_f1 += val_f1_batch
+            
+            preds_tokenized = decoder.decode_from_logits(logits)
+            pred_sentences_decoded, preds_sentences_ids = decoder.batch_decode(preds_tokenized.permute(1, 0))
+            ref_sentences_decoded, ref_sentences_ids = decoder.batch_decode(target.permute(1, 0))
+                
+
+        val_loss /= len(loader)
+        val_acc /= len(loader)
+        val_f1 /= len(loader)
+
+        
+        
+        
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    # specify mode, options: train, predict:
+    parser.add_argument("--mode", default="train", type=str)
+    parser.add_argument("--optimizer", default="adam", type=str)
+    parser.add_argument("--lr", default=0.005, type=float)
     
     #specify seed for reproducing
     parser.add_argument("--seed", default=8956, type=int)
@@ -243,6 +274,7 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     
+    
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -265,7 +297,7 @@ if __name__ == "__main__":
                                                 rnn_type=args.rnn_type,
                                                 attn_type = args.attn_type,
                                                 attn_method=args.attn_method)
-                                   
+                                
     train_dset = GenVQADataset(model.Tokenizer, 
         annotations = "../fsvqa_data_train_full/annotations.pickle", 
         questions = "../fsvqa_data_train_full/questions.pickle", 
@@ -282,8 +314,12 @@ if __name__ == "__main__":
         img_dir = "../val_img_data")
     
     if model:
-        vqa = VQA(datetime.now(), model, args.decoder_type, train_dset, val_dset=val_dset, test_dset=test_dset)
-        vqa.train()
-        vqa.load_model("BEST")
-        vqa.evaluate(val_dset, "VAL")
-        vqa.evaluate(test_dset, "TEST")
+        vqa = VQA(datetime.now(), model, args.decoder_type, train_dset, val_dset=val_dset, test_dset=test_dset, optimizer=args.optimizer, lr= args.lr)
+        if args.mode == 'train':
+            vqa.train()
+            vqa.load_model("BEST")
+            vqa.evaluate(val_dset, "VAL")
+            vqa.evaluate(test_dset, "TEST")
+                
+        # elif args.mode =='predict':
+        #     vqa.predict()

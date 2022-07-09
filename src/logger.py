@@ -8,12 +8,9 @@ class Logger:
 
     def log(self, module, message):
         os.makedirs(self.logs_dir, exist_ok=True)
-        logs_path = self.logs_dir + f"/{module}.logs"
-        message = f"[{datetime.datetime.now()}] " + message + "\n"
-        if os.path.exists(logs_path):
-            method = 'a'
-        else :
-            method = 'w'
+        logs_path = f"{self.logs_dir}/{module}.logs"
+        message = f"[{datetime.datetime.now()}] {message}" + "\n"
+        method = 'a' if os.path.exists(logs_path) else 'w'
         with open(logs_path, method) as f:
                 f.write(message)
 
