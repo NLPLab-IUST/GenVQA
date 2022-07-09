@@ -203,7 +203,7 @@ class VQA:
     def predict(self, model_path, dset, key):
         #load model
         if os.path.exists(model_path) == False:
-            Logger.log(f"Prediction_{self.train_date_time}", f"Couldn't load model from {model_path} ")
+            print(f"Couldn't load model from {model_path}")
             return
 
         state_dict = torch.load(model_path)
@@ -217,22 +217,27 @@ class VQA:
             
         self.model.eval()
         decoder = GreedyDecoder(self.model.Tokenizer)
+        questions, pred_sentences, ref_sentences = [], [], []
         
         for i, (input_ids, feats, boxes, masks, target) in enumerate(pbar := tqdm(loader, total=len(loader))):
-            loss, val_acc_batch, val_f1_batch, logits = self.__step(input_ids, feats, boxes, masks, target, val=True)
-            
-            val_loss += loss.item()
-            val_acc += val_acc_batch.item()
-            val_f1 += val_f1_batch
+            _, _, _, logits = self.__step(input_ids, feats, boxes, masks, target, val=True)
             
             preds_tokenized = decoder.decode_from_logits(logits)
-            pred_sentences_decoded, preds_sentences_ids = decoder.batch_decode(preds_tokenized.permute(1, 0))
-            ref_sentences_decoded, ref_sentences_ids = decoder.batch_decode(target.permute(1, 0))
+            questions_decoded, _ = decoder.batch_decode(input_ids)
+            pred_sentences_decoded, _ = decoder.batch_decode(preds_tokenized.permute(1, 0))
+            ref_sentences_decoded, _ = decoder.batch_decode(target.permute(1, 0))
+            
+            questions.extend(questions_decoded)
+            pred_sentences.extend(pred_sentences_decoded)
+            ref_sentences.extend(ref_sentences_decoded)
+            
+            
+        model_predictions = [{"question":question, "ref answer": ref_answer, "pred answer":pred_answer} 
+                             for question, ref_answer, pred_answer in zip(questions, ref_sentences, pred_sentences)]
+              
+        with open(os.path.join(os.path.split(model_path), f"model_prediction_{key}.json"), 'w') as fp:
+            json.dump(model_predictions, fp)
                 
-
-        val_loss /= len(loader)
-        val_acc /= len(loader)
-        val_f1 /= len(loader)
 
         
         
@@ -244,6 +249,9 @@ def parse_args():
     parser.add_argument("--mode", default="train", type=str)
     parser.add_argument("--optimizer", default="adam", type=str)
     parser.add_argument("--lr", default=0.005, type=float)
+    
+    # specify model_path to load for prediction
+    parser.add_argument("--model_path", default='', type=str)
     
     #specify seed for reproducing
     parser.add_argument("--seed", default=8956, type=int)
@@ -321,5 +329,5 @@ if __name__ == "__main__":
             vqa.evaluate(val_dset, "VAL")
             vqa.evaluate(test_dset, "TEST")
                 
-        # elif args.mode =='predict':
-        #     vqa.predict()
+        elif args.mode =='predict':
+            vqa.predict(args.model_path, val_dset, "VAL")
