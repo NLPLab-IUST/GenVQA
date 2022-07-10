@@ -168,8 +168,8 @@ class VQA:
             logits = self.model(input_ids, feats, boxes, masks, target, teacher_force_ratio)
             
         elif self.decoder_type == 'transformer':
-            target = None if val else target
-            logits = self.model(input_ids, feats, boxes, masks, target)
+            answer_tokenized = None if val else target
+            logits = self.model(input_ids, feats, boxes, masks, answer_tokenized)
         
         # logits shape: (L, N, target_vocab_size)
         loss = self.criterion(logits.permute(1, 2, 0), target.permute(1,0))
