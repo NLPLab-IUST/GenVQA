@@ -19,6 +19,7 @@ from torch.utils.data.dataloader import DataLoader
 from torchmetrics import Accuracy, F1Score
 from tqdm import tqdm
 from transformers import AdamW
+import torch.nn.functional as F
 
 
 class VQA:
@@ -53,8 +54,8 @@ class VQA:
         if(use_cuda):
             self.model = self.model.cuda()
             
-        pad_idx = 0
-        self.criterion = nn.CrossEntropyLoss(ignore_index=pad_idx)
+        self.pad_idx = 0
+        self.criterion = nn.CrossEntropyLoss(ignore_index=self.pad_idx)
         
         if optimizer == 'adam':
             self.optim = torch.optim.Adam(list(self.model.parameters()), lr=lr)
@@ -66,8 +67,8 @@ class VQA:
         # self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, step_size=10, gamma=0.5)
         self.early_stopping = EarlyStopping(patience=5, verbose=True)
         
-        self.f1_score = F1Score(num_classes=self.model.Tokenizer.vocab_size, ignore_index=pad_idx, top_k=1, mdmc_average='samplewise')
-        self.accuracy = Accuracy(num_classes=self.model.Tokenizer.vocab_size, ignore_index=pad_idx, top_k=1, mdmc_average='samplewise')
+        self.f1_score = F1Score(num_classes=self.model.Tokenizer.vocab_size, ignore_index=self.pad_idx, top_k=1, mdmc_average='samplewise')
+        self.accuracy = Accuracy(num_classes=self.model.Tokenizer.vocab_size, ignore_index=self.pad_idx, top_k=1, mdmc_average='samplewise')
         
         self.save_dir = os.path.join(CHECKPOINTS_DIR, str(self.train_date_time))
         if not(os.path.exists(self.save_dir)):
@@ -163,13 +164,17 @@ class VQA:
         return val_loss, val_acc, val_f1, other_metrics
         
     def __step(self, input_ids, feats, boxes, masks, target, val=False):
+        if val:
+            target = F.pad(input=target, pad=(0, 0, 0, self.max_sequence_length - target.shape[0]), mode='constant', value=self.pad_idx)
+            
         if self.decoder_type in ['rnn','attn-rnn']:
-            teacher_force_ratio = 0 if val else 0.5       
-            logits = self.model(input_ids, feats, boxes, masks, target, teacher_force_ratio)
+            teacher_force_ratio = 0 if val else 0.5
+            answer_tokenized = None if val else target      
+            logits = self.model(input_ids, feats, boxes, masks, answer_tokenized, teacher_force_ratio, self.max_sequence_length)
             
         elif self.decoder_type == 'transformer':
             answer_tokenized = None if val else target
-            logits = self.model(input_ids, feats, boxes, masks, answer_tokenized)
+            logits = self.model(input_ids, feats, boxes, masks, answer_tokenized, self.max_sequence_length)
         
         # logits shape: (L, N, target_vocab_size)
         loss = self.criterion(logits.permute(1, 2, 0), target.permute(1,0))
