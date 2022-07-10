@@ -168,6 +168,7 @@ class VQA:
             logits = self.model(input_ids, feats, boxes, masks, target, teacher_force_ratio)
             
         elif self.decoder_type == 'transformer':
+            target = None if val else target
             logits = self.model(input_ids, feats, boxes, masks, target)
         
         # logits shape: (L, N, target_vocab_size)
