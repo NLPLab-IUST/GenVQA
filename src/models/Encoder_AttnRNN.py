@@ -98,7 +98,7 @@ class Encoder_AttnRNN(torch.nn.Module):
         # Send <cls> token to decoder
         x =  torch.tensor([self.start_token]*batch_size).cuda()
         
-        for t in range(1, target_len):
+        for t in range(0, target_len):
             output, hidden, attn_weights = self.rnn(x, hidden, encoder_states)
 
             # Store next output prediction
