@@ -324,7 +324,17 @@ if __name__ == "__main__":
         img_dir = "../val_img_data")
     
     if model:
-        vqa = VQA(datetime.now(), model, args.decoder_type, train_dset, val_dset=val_dset, test_dset=test_dset, optimizer=args.optimizer, lr= args.lr)
+        vqa = VQA(  
+            datetime.now(), 
+            model, 
+            args.decoder_type, 
+            train_dset, 
+            val_dset=val_dset, 
+            test_dset=test_dset, 
+            optimizer=args.optimizer, 
+            lr= args.lr
+        )
+        
         if args.mode == 'train':
             vqa.train()
             vqa.load_model("BEST")
@@ -333,3 +343,16 @@ if __name__ == "__main__":
                 
         elif args.mode =='predict':
             vqa.predict(args.model_path, val_dset, "VAL")
+        
+        elif args.mode == 'evaluate':
+            vqa = VQA(
+                args.model_path, 
+                model, 
+                args.decoder_type, 
+                train_dset, 
+                val_dset=val_dset, 
+                test_dset=test_dset
+            )
+            vqa.load_model("BEST")
+            vqa.evaluate(val_dset, "VAL")
+            vqa.evaluate(test_dset, "TEST")
