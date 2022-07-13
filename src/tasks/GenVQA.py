@@ -35,7 +35,7 @@ class VQA:
                  epochs=200,
                  lr=0.005,
                  log_every=1,
-                 save_every=50, 
+                 save_every=5, 
                  max_sequence_length=50, 
                  optimizer = 'adam'):
         
@@ -79,7 +79,7 @@ class VQA:
         for epoch in range(self.epochs):
             self.model.train()
             for i, (input_ids, feats, boxes, masks, target) in enumerate(pbar := tqdm(self.train_loader, total=len(self.train_loader))):
-
+                # torch.cuda.empty_cache()
                 pbar.set_description(f"Epoch {epoch}")
                 loss, batch_acc, batch_f1, _ = self.__step(input_ids, feats, boxes, masks, target, val=False)  
                 
@@ -116,7 +116,7 @@ class VQA:
             if self.early_stopping.early_stop:
                 print("Early stopping")
                 break
-        
+    @torch.no_grad()   
     def __evaluate_validation(self, metric_calculator=False, dset=None):
         print("Validation Evaluations: ")
         self.model.eval()
@@ -134,6 +134,7 @@ class VQA:
         
         for i, (input_ids, feats, boxes, masks, target) in enumerate(pbar := tqdm(loader, total=len(loader))):
             #calculate losses, and logits + necessary metrics for showin during training
+            # torch.cuda.empty_cache()
             loss, val_acc_batch, val_f1_batch, logits = self.__step(input_ids, feats, boxes, masks, target, val=True)
             
             val_loss += loss.item()
@@ -167,14 +168,9 @@ class VQA:
         if val:
             target = F.pad(input=target, pad=(0, 0, 0, self.max_sequence_length - target.shape[0]), mode='constant', value=self.pad_idx)
             
-        if self.decoder_type in ['rnn','attn-rnn']:
-            teacher_force_ratio = 0 if val else 0.5
-            answer_tokenized = None if val else target      
-            logits = self.model(input_ids, feats, boxes, masks, answer_tokenized, teacher_force_ratio, self.max_sequence_length)
-            
-        elif self.decoder_type == 'transformer':
-            answer_tokenized = None if val else target
-            logits = self.model(input_ids, feats, boxes, masks, answer_tokenized, self.max_sequence_length)
+        teacher_force_ratio = 0 if val else 0.5
+        answer_tokenized = None if val else target      
+        logits = self.model(input_ids, feats, boxes, masks, answer_tokenized, teacher_force_ratio, self.max_sequence_length)
         
         # logits shape: (L, N, target_vocab_size)
         loss = self.criterion(logits.permute(1, 2, 0), target.permute(1,0))

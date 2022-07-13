@@ -1,5 +1,5 @@
 import os
-
+import random
 import torch
 from torch import nn
 
@@ -49,12 +49,14 @@ class Encoder_Transformer(nn.Module):
         self.name = f"{encoder_type}_{nheads}heads_{decoder_layers}_transformer"
         print(self.name)
     
-    def forward(self, input_ids, visual_feats, visual_pos, attention_mask, answer_tokenized=None, max_seq_len=50):
+    def forward(self, input_ids, visual_feats, visual_pos, attention_mask, answer_tokenized=None, teacher_force_ratio=0.5, max_seq_len=50):
         """
             Train phase forward propagation
         """
         
         batch_size = input_ids.shape[0]
+        max_seq_len = max_seq_len if answer_tokenized is None else answer_tokenized.shape[0]
+
         # encode question and image with lxmert
         if self.encoder_type == 'lxmert':
             kwargs = {"input_ids" : input_ids,
@@ -81,7 +83,8 @@ class Encoder_Transformer(nn.Module):
             memory_key_padding_mask = (input_ids == self.PADDING_VALUE)
             memory_key_padding_mask = F.pad(input=memory_key_padding_mask, pad=(0, visual_feats.shape[1], 0, 0), mode='constant', value=0)
             # (batch_size, text_seq_length+image_seq_length)
-        if answer_tokenized is not None:
+        
+        if answer_tokenized is not None and random.random() < teacher_force_ratio:
             tgt_len = answer_tokenized.shape[0]
 
             answer_embeddings = self.embedding_layer(answer_tokenized)
