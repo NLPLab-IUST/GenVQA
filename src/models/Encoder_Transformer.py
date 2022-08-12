@@ -53,10 +53,12 @@ class Encoder_Transformer(nn.Module):
         """
             Train phase forward propagation
         """
-        
         batch_size = input_ids.shape[0]
         max_seq_len = max_seq_len if answer_tokenized is None else answer_tokenized.shape[0]
 
+        # shift right
+        answer_tokenized = answer_tokenized[:-1,:] if answer_tokenized is not None else answer_tokenized
+        
         # encode question and image with lxmert
         if self.encoder_type == 'lxmert':
             kwargs = {"input_ids" : input_ids,
@@ -84,7 +86,8 @@ class Encoder_Transformer(nn.Module):
             memory_key_padding_mask = F.pad(input=memory_key_padding_mask, pad=(0, visual_feats.shape[1], 0, 0), mode='constant', value=0)
             # (batch_size, text_seq_length+image_seq_length)
         
-        if answer_tokenized is not None and random.random() < teacher_force_ratio:
+        # if answer_tokenized is not None and random.random() < teacher_force_ratio:
+        if answer_tokenized is not None:
             tgt_len = answer_tokenized.shape[0]
 
             answer_embeddings = self.embedding_layer(answer_tokenized)
@@ -119,8 +122,9 @@ class Encoder_Transformer(nn.Module):
             target_vocab_size = self.Tokenizer.vocab_size
 
             outputs = torch.zeros(max_seq_len, batch_size, target_vocab_size).cuda()
-
-            for i in range(max_seq_len):
+            outputs[0,:,self.START_TOKEN] = 1
+            
+            for i in range(1,max_seq_len):
                 tgt_len = x.shape[0]
                 answer_embeddings = self.embedding_layer(x)
                 positions = self.pe(answer_embeddings)

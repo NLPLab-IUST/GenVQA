@@ -116,6 +116,7 @@ class VQA:
             if self.early_stopping.early_stop:
                 print("Early stopping")
                 break
+            
     @torch.no_grad()   
     def __evaluate_validation(self, metric_calculator=False, dset=None):
         print("Validation Evaluations: ")
@@ -165,14 +166,16 @@ class VQA:
         return val_loss, val_acc, val_f1, other_metrics
         
     def __step(self, input_ids, feats, boxes, masks, target, val=False):
-        if val:
-            target = F.pad(input=target, pad=(0, 0, 0, self.max_sequence_length - target.shape[0]), mode='constant', value=self.pad_idx)
-            
+        
         teacher_force_ratio = 0 if val else 0.5
         answer_tokenized = None if val else target      
         logits = self.model(input_ids, feats, boxes, masks, answer_tokenized, teacher_force_ratio, self.max_sequence_length)
         
         # logits shape: (L, N, target_vocab_size)
+        # target = target[1:,:]
+        if val:
+            target = F.pad(input=target, pad=(0, 0, 0, self.max_sequence_length - target.shape[0]), mode='constant', value=self.pad_idx)
+            
         loss = self.criterion(logits.permute(1, 2, 0), target.permute(1,0))
 
         if not(val):
