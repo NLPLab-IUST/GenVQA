@@ -122,9 +122,9 @@ class Encoder_Transformer(nn.Module):
             target_vocab_size = self.Tokenizer.vocab_size
 
             outputs = torch.zeros(max_seq_len, batch_size, target_vocab_size).cuda()
-            outputs[0,:,self.START_TOKEN] = 1
+            # outputs[0,:,self.START_TOKEN] = 1
             
-            for i in range(1,max_seq_len):
+            for i in range(0,max_seq_len):
                 tgt_len = x.shape[0]
                 answer_embeddings = self.embedding_layer(x)
                 positions = self.pe(answer_embeddings)

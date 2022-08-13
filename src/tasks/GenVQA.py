@@ -172,7 +172,10 @@ class VQA:
         logits = self.model(input_ids, feats, boxes, masks, answer_tokenized, teacher_force_ratio, self.max_sequence_length)
         
         # logits shape: (L, N, target_vocab_size)
-        # target = target[1:,:]
+
+        if self.decoder_type == 'transformer':
+            target = target[1:,:]
+        
         if val:
             target = F.pad(input=target, pad=(0, 0, 0, self.max_sequence_length - target.shape[0]), mode='constant', value=self.pad_idx)
             
