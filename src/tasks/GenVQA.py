@@ -14,7 +14,12 @@ from src.data.datasets import GenVQADataset, pad_batched_sequence
 from src.decoders.greedy_decoder import GreedyDecoder
 from src.logger import Instance as Logger
 from src.metrics.MetricCalculator import MetricCalculator
-from src.models import Encoder_AttnRNN, Encoder_RNN, Encoder_Transformer
+from src.models import (
+    Encoder_AttnRNN, 
+    Encoder_RNN, 
+    Encoder_Transformer,
+    Encoder_BART
+)
 from torch.utils.data.dataloader import DataLoader
 from torchmetrics import Accuracy, F1Score
 from tqdm import tqdm
@@ -67,8 +72,8 @@ class VQA:
         # self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, step_size=10, gamma=0.5)
         self.early_stopping = EarlyStopping(patience=5, verbose=True)
         
-        self.f1_score = F1Score(num_classes=self.model.Tokenizer.vocab_size, ignore_index=self.pad_idx, top_k=1, mdmc_average='samplewise')
-        self.accuracy = Accuracy(num_classes=self.model.Tokenizer.vocab_size, ignore_index=self.pad_idx, top_k=1, mdmc_average='samplewise')
+        self.f1_score = F1Score(num_classes=self.model.decoder_tokenizer.vocab_size, ignore_index=self.pad_idx, top_k=1, mdmc_average='samplewise')
+        self.accuracy = Accuracy(num_classes=self.model.decoder_tokenizer.vocab_size, ignore_index=self.pad_idx, top_k=1, mdmc_average='samplewise')
         
         self.save_dir = os.path.join(CHECKPOINTS_DIR, str(self.train_date_time))
         if not(os.path.exists(self.save_dir)):
@@ -131,7 +136,7 @@ class VQA:
         if(metric_calculator):
             metric_calculator = MetricCalculator(self.model.embedding_layer)
             # we used greedy decoder as a temporary decode. 
-            decoder = GreedyDecoder(self.model.Tokenizer)
+            decoder = GreedyDecoder(self.model.decoder_tokenizer)
         
         for i, (input_ids, feats, boxes, masks, target) in enumerate(pbar := tqdm(loader, total=len(loader))):
             #calculate losses, and logits + necessary metrics for showin during training
@@ -173,7 +178,7 @@ class VQA:
         
         # logits shape: (L, N, target_vocab_size)
 
-        if self.decoder_type == 'transformer':
+        if self.decoder_type == 'transformer' or self.decoder_type == 'bart':
             target = target[1:,:]
         
         if val:
@@ -224,7 +229,7 @@ class VQA:
             loader = self.val_loader
             
         self.model.eval()
-        decoder = GreedyDecoder(self.model.Tokenizer)
+        decoder = GreedyDecoder(self.model.decoder_tokenizer)
         questions, pred_sentences, ref_sentences = [], [], []
         
         for i, (input_ids, feats, boxes, masks, target) in enumerate(pbar := tqdm(loader, total=len(loader))):
@@ -303,28 +308,38 @@ if __name__ == "__main__":
                                         bidirectional=args.bidirectional)
     
     elif (args.decoder_type.lower() == 'transformer'):
-        model = Encoder_Transformer.Encoder_Transformer(encoder_type=args.encoder_type,
-                                                        nheads=args.nheads,
-                                                        decoder_layers=args.num_transformer_layers,
-                                                        hidden_size=LXMERT_HIDDEN_SIZE)
+        model = Encoder_Transformer.Encoder_Transformer(
+            encoder_type=args.encoder_type,
+            nheads=args.nheads,
+            decoder_layers=args.num_transformer_layers,
+            hidden_size=LXMERT_HIDDEN_SIZE)
         
     elif(args.decoder_type.lower() == 'attn-rnn'):
-        model = Encoder_AttnRNN.Encoder_AttnRNN(encoder_type = args.encoder_type,
-                                                rnn_type=args.rnn_type,
-                                                attn_type = args.attn_type,
-                                                attn_method=args.attn_method)
-                                
-    train_dset = GenVQADataset(model.Tokenizer, 
+        model = Encoder_AttnRNN.Encoder_AttnRNN(
+            encoder_type = args.encoder_type,
+            rnn_type=args.rnn_type,
+            attn_type = args.attn_type,
+            attn_method=args.attn_method)
+        
+    elif (args.decoder_type.lower() == 'bart'):
+        model = Encoder_BART.Encoder_BART(
+            encoder_type = args.encoder_type,
+            bart_vesrion="facebook/bart-base")
+                               
+    train_dset = GenVQADataset(model.encoder_tokenizer, 
+        model.decoder_tokenizer,
         annotations = "../fsvqa_data_train_full/annotations.pickle", 
         questions = "../fsvqa_data_train_full/questions.pickle", 
         img_dir = "../img_data")
     
-    val_dset = GenVQADataset(model.Tokenizer, 
+    val_dset = GenVQADataset(model.encoder_tokenizer, 
+        model.decoder_tokenizer,
         annotations = "../fsvqa_data_val_full/annotations.pickle", 
         questions = "../fsvqa_data_val_full/questions.pickle", 
         img_dir = "../val_img_data")
     
-    test_dset = GenVQADataset(model.Tokenizer,
+    test_dset = GenVQADataset(model.encoder_tokenizer, 
+        model.decoder_tokenizer,
         annotations = "../fsvqa_data_test_full/annotations.pickle", 
         questions = "../fsvqa_data_test_full/questions.pickle", 
         img_dir = "../val_img_data")

@@ -4,13 +4,14 @@ from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence
 import torch
 class GenVQADataset(Dataset):
-    def __init__(self, tokenizer, annotations, questions, img_dir, batch_size=32):
+    def __init__(self, encoder_tokenizer, decoder_tokenizer, annotations, questions, img_dir, batch_size=32):
         with open(annotations, 'rb') as f:
             self.annotations = pickle.load(f)
         with open(questions, 'rb') as f:
             self.questions = pickle.load(f)
         self.img_dir = img_dir
-        self.tokenizer = tokenizer
+        self.encoder_tokenizer = encoder_tokenizer
+        self.decoder_tokenizer = decoder_tokenizer
         self.batch_size = batch_size
 
     def __getitem__(self, idx):
@@ -21,7 +22,7 @@ class GenVQADataset(Dataset):
         with open(img_path, 'rb') as f:
             img = pickle.load(f)
         # extract sentence data
-        tokenized_sentence = self.tokenizer(q['question'])
+        tokenized_sentence = self.encoder_tokenizer(q['question'])
         input_ids = tokenized_sentence['input_ids']
         attention_mask = tokenized_sentence['attention_mask']
         # extract image data
@@ -37,7 +38,7 @@ class GenVQADataset(Dataset):
         if 'answers' in dataum.keys():
             answer = dataum['answers'][0]
             a_text = answer['answer']
-            tokenized_sentence = self.tokenizer(a_text)
+            tokenized_sentence = self.decoder_tokenizer(a_text)
             label_tokenized = tokenized_sentence['input_ids']
             # label_masks = tokenized_sentence['attention_mask']
             return input_ids, visual_feats, visual_pos, attention_mask, label_tokenized

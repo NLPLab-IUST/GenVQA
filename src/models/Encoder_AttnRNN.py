@@ -15,10 +15,13 @@ class Encoder_AttnRNN(torch.nn.Module):
         
         if encoder_type == 'lxmert':
             self.encoder = LxmertModel.from_pretrained("unc-nlp/lxmert-base-uncased")
-            self.Tokenizer = LxmertTokenizer.from_pretrained("unc-nlp/lxmert-base-uncased")
+            self.encoder_tokenizer = LxmertTokenizer.from_pretrained("unc-nlp/lxmert-base-uncased")
+            self.decoder_tokenizer = self.encoder_tokenizer
         elif encoder_type == 'visualbert':
             self.encoder = VisualBertModel.from_pretrained("uclanlp/visualbert-vqa-coco-pre")
-            self.Tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+            self.encoder_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+            self.decoder_tokenizer = self.encoder_tokenizer
+
         
         #freeze encoder
         if freeze_encoder:
@@ -30,14 +33,14 @@ class Encoder_AttnRNN(torch.nn.Module):
         if attn_type=='bahdanau':
             self.rnn = BahdanauRNN(embedding=self.embedding_layer,
                                     rnn_type=rnn_type,  
-                                    output_size=self.Tokenizer.vocab_size,
+                                    output_size=self.decoder_tokenizer.vocab_size,
                                     prob=prob)
             self.name = f"{encoder_type}_{attn_type}_attn_{rnn_type}"
         elif attn_type =='luong':
             self.rnn = LuongRNN(embedding=self.embedding_layer,
                                 rnn_type=rnn_type,
                                 attn_method=attn_method,
-                                output_size=self.Tokenizer.vocab_size,
+                                output_size=self.decoder_tokenizer.vocab_size,
                                 prob=prob)
             self.name = f"{encoder_type}_{attn_type}_attn({attn_method})_{rnn_type}"
         
@@ -53,7 +56,7 @@ class Encoder_AttnRNN(torch.nn.Module):
 
         batch_size = input_ids.shape[0]
         target_len = max_sequence_length if answer_tokenized is None else answer_tokenized.shape[0]
-        target_vocab_size = self.Tokenizer.vocab_size
+        target_vocab_size = self.decoder_tokenizer.vocab_size
         
         outputs = torch.zeros(target_len, batch_size, target_vocab_size).cuda()
 

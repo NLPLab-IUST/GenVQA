@@ -4,12 +4,16 @@ import torch
 from torch import nn
 
 import torch.nn.functional as F
-from transformers import LxmertModel, LxmertTokenizer, VisualBertModel, BertTokenizer
+from transformers import ( 
+    LxmertModel, 
+    LxmertTokenizer, 
+    VisualBertModel, 
+    BertTokenizer,
+    BartTokenizer)
+from transformers.models.bart.modeling_bart import BartDecoder
 
-from src.utils import PositionalEncoder
-
-class Encoder_Transformer(nn.Module):
-    def __init__(self, encoder_type, nheads, decoder_layers, hidden_size, freeze_encoder=True):
+class Encoder_BART(nn.Module):
+    def __init__(self, encoder_type, bart_vesrion="facebook/bart-base", freeze_encoder=True):
         super().__init__()
         
         self.encoder_type = encoder_type
@@ -18,12 +22,10 @@ class Encoder_Transformer(nn.Module):
             self.encoder = LxmertModel.from_pretrained("unc-nlp/lxmert-base-uncased")
             self.encoder.config.output_hidden_states = True
             self.encoder_tokenizer = LxmertTokenizer.from_pretrained("unc-nlp/lxmert-base-uncased")
-            self.decoder_tokenizer = self.encoder_tokenizer
             
         elif encoder_type == 'visualbert':
             self.encoder = VisualBertModel.from_pretrained("uclanlp/visualbert-vqa-coco-pre")
             self.encoder_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-            self.decoder_tokenizer = self.encoder_tokenizer
 
         #freeze LXMERT
         if freeze_encoder:
@@ -32,23 +34,19 @@ class Encoder_Transformer(nn.Module):
 
         
         # This standard decoder layer is based on the paper “Attention Is All You Need”.
-        transformer_layer = nn.TransformerDecoderLayer(d_model=hidden_size, nhead=nheads)
-        self.Decoder = nn.TransformerDecoder(transformer_layer, num_layers=decoder_layers)
-
-        self.pe = PositionalEncoder(hidden_size, dropout=0.1,max_len=200)
+        self.Decoder = BartDecoder.from_pretrained(bart_vesrion).cuda()
+        self.decoder_tokenizer = BartTokenizer.from_pretrained(bart_vesrion, bos_token='<cls>', cls_token='<cls>')
+        self.Decoder.resize_token_embeddings(len(self.decoder_tokenizer))
         
-        self.embedding_layer = self.encoder.embeddings.word_embeddings
         self.output_size = self.decoder_tokenizer.vocab_size
-        self.decoder_layers = decoder_layers
-        self.nheads = nheads
-        self.hidden_size = hidden_size
-        self.PADDING_VALUE = 0
-        self.START_TOKEN = 101
-        self.SEP_TOKEN = 102 
-        #Linear layer to output vocabulary size
-        self.Linear = nn.Linear(hidden_size, self.Tokenizer.vocab_size)
         
-        self.name = f"{encoder_type}_{nheads}heads_{decoder_layers}_transformer"
+        self.PADDING_VALUE = 0
+        self.START_TOKEN = self.decoder_tokenizer.bos_token_id
+        self.SEP_TOKEN = self.decoder_tokenizer.eos_token_id 
+       
+        self.Linear = nn.Linear(self.Decoder.config.d_model, self.decoder_tokenizer.vocab_size)
+
+        self.name = f"{encoder_type}_bart"
         print(self.name)
     
     def forward(self, input_ids, visual_feats, visual_pos, attention_mask, answer_tokenized=None, teacher_force_ratio=0.5, max_seq_len=50):
@@ -68,11 +66,11 @@ class Encoder_Transformer(nn.Module):
                       "visual_pos" : visual_pos,
                       "attention_mask": attention_mask}
             output = self.encoder(**kwargs)
-            encoder_output  = output.language_hidden_states[-1].permute(1, 0, 2)
-            # encoder_output shape: (seq_len, N, hidden_size) to send it to
+            encoder_output  = output.language_hidden_states[-1]
+            # encoder_output shape: (N, L, hidden_size) to send it to
             
             # memory masks to consider padding values in source sentence (questions)
-            memory_key_padding_mask = (input_ids == self.PADDING_VALUE)
+            encoder_attention_mask = (input_ids == self.PADDING_VALUE).int()
         
         elif self.encoder_type == 'visualbert':
             kwargs = {"input_ids" : input_ids,
@@ -80,65 +78,57 @@ class Encoder_Transformer(nn.Module):
                       "visual_embeds": visual_feats,
                       "output_hidden_states":True}
             output = self.encoder(**kwargs)
-            encoder_output = output.hidden_states[-1].permute(1,0,2)
-            # encoder_output shape: (sequence_length, batch_size, hidden_size)
+            encoder_output = output.hidden_states[-1]
+            # encoder_output shape: (N, L, hidden_size)
             
             # memory masks to consider padding values in source sentence (questions)
-            memory_key_padding_mask = (input_ids == self.PADDING_VALUE)
-            memory_key_padding_mask = F.pad(input=memory_key_padding_mask, pad=(0, visual_feats.shape[1], 0, 0), mode='constant', value=0)
+            encoder_attention_mask = (input_ids == self.PADDING_VALUE).int()
+            encoder_attention_mask = F.pad(input=encoder_attention_mask, pad=(0, visual_feats.shape[1], 0, 0), mode='constant', value=0)
             # (batch_size, text_seq_length+image_seq_length)
         
         # if answer_tokenized is not None and random.random() < teacher_force_ratio:
         if answer_tokenized is not None:
-            tgt_len = answer_tokenized.shape[0]
 
-            answer_embeddings = self.embedding_layer(answer_tokenized)
-            # answer embeddings shape: (seq_len, N, embedding_size)
-            # embedding_size is 768 in LXMERT
-            positions = self.pe(answer_embeddings)
-            
             # target masks to consider padding values in target embeddings (answers)
-            tgt_key_padding_mask = (answer_tokenized.permute(1, 0) == self.PADDING_VALUE)
-
-            # target attention masks to avoid future tokens in our predictions
-            # Adapted from PyTorch source code:
-            # https://github.com/pytorch/pytorch/blob/176174a68ba2d36b9a5aaef0943421682ecc66d4/torch/nn/modules/transformer.py#L130
-            tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt_len).cuda()        
-            
+            attention_mask = (answer_tokenized.permute(1, 0) == self.PADDING_VALUE).int()           
 
             # decode sentence and encoder output to generate answer
-            output = self.Decoder(positions, 
-                                encoder_output,
-                                tgt_mask=tgt_mask,
-                                tgt_key_padding_mask = tgt_key_padding_mask, 
-                                memory_key_padding_mask = memory_key_padding_mask)
-            #output shape: (tgt_seq_len, N, hidden_size)
+            output = self.Decoder(
+                                input_ids=answer_tokenized.permute(1, 0), 
+                                attention_mask=attention_mask,
+                                encoder_hidden_states=encoder_output,
+                                encoder_attention_mask = encoder_attention_mask,
+                                output_hidden_states=True,
+                                return_dict=True)
+            # print(output.shape)
+            output = output.last_hidden_state.permute(1, 0, 2)
+            #output shape: (L, N, hidden_size)
 
             output = self.Linear(output)
-            #output shape: (tgt_seq_len, N, vocab_size)
+            #output shape: (L, N, hidden_size)
         
         else:
             # generatoin phase
             x = torch.tensor([[self.START_TOKEN] * batch_size]).cuda()
             # x shape: (1, N)
-            target_vocab_size = self.Tokenizer.vocab_size
+            target_vocab_size = self.decoder_tokenizer.vocab_size
 
             outputs = torch.zeros(max_seq_len, batch_size, target_vocab_size).cuda()
             # outputs[0,:,self.START_TOKEN] = 1
             
             for i in range(0,max_seq_len):
-                tgt_len = x.shape[0]
-                answer_embeddings = self.embedding_layer(x)
-                positions = self.pe(answer_embeddings)
-                tgt_key_padding_mask = (x.permute(1, 0) == self.PADDING_VALUE)
-                tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt_len).cuda()
-                output = self.Decoder( 
-                                positions, 
-                                encoder_output,
-                                tgt_mask=tgt_mask,
-                                tgt_key_padding_mask = tgt_key_padding_mask, 
-                                memory_key_padding_mask = memory_key_padding_mask) 
-                #output shape: (tgt_seq_len, N, hidden_size)
+
+                attention_mask = (x.permute(1, 0) == self.PADDING_VALUE).int()
+                output = self.Decoder(
+                                input_ids=x.permute(1, 0), 
+                                attention_mask=attention_mask,
+                                encoder_hidden_states=encoder_output,
+                                encoder_attention_mask = encoder_attention_mask,
+                                output_hidden_states=True,
+                                return_dict=True)
+                
+                output = output.last_hidden_state.permute(1, 0, 2)
+                #output shape: (L, N, hidden_size)
                 
                 # chose the last word of sequence Based on CodeXGLUE project
                 # https://github.com/microsoft/CodeXGLUE/blob/main/Code-Code/code-refinement/code/model.py
@@ -168,3 +158,4 @@ class Encoder_Transformer(nn.Module):
             os.makedirs(dir_, exist_ok=True)
         path = os.path.join(dir_, f"{self.name}.{epoch}.torch")
         torch.save(self.state_dict(), path)
+
