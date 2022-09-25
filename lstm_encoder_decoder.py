@@ -67,7 +67,7 @@ class Question_Encoder(nn.Module):
 
 class LSTM_Encoder(nn.Module):
 
-    def __init__(self, feature_size, qu_vocab_size, ans_vocab_size, word_embed, hidden_size, num_hidden):
+    def __init__(self, feature_size, qu_vocab_size, word_embed, hidden_size, num_hidden):
 
         super(LSTM_Encoder, self).__init__()
         self.img_encoder = Image_Encoder(feature_size)
@@ -84,7 +84,461 @@ class LSTM_Encoder(nn.Module):
         combined_feature = img_feature * qst_feature
         combined_feature = self.dropout(combined_feature)
         combined_feature = self.tanh(combined_feature)
-        combined_feature = self.fc(combined_feature)       # (batchsize, ans_vocab_size=1000)
+        combined_feature = self.fc(combined_feature)       # (batchsize, 512)
 
         return combined_feature
 
+"""## Decoder"""
+
+class LSTM_Decoder(nn.Module):
+    def __init__(self, embedding, input_size=512, hidden_size=512, output_size=512, num_layers=2, bidirectional=False, prob=0.5):
+        super().__init__()
+        self.embedding = embedding
+        self.hidden_size = hidden_size
+        self.output_size = output_size
+        self.input_size = input_size
+        self.num_layers = num_layers
+        self.bidirectional = bidirectional
+        
+        self.dropout = nn.Dropout(prob)
+        
+        dropout = 0 if self.num_layers == 1 else prob
+        
+        self.lstm = LSTM(input_size=input_size, hidden_size=self.hidden_size, 
+                        bidirectional=self.bidirectional, 
+                        num_layers=self.num_layers, dropout = dropout)
+            
+        D = 2 if self.lstm.bidirectional==True else 1
+        self.Linear = nn.Linear(D*self.hidden_size, output_size)
+    
+    def forward(self, x, hidden):
+        """
+            # x shape: (N) where N is for batch size, we want it to be (1, N), seq_length
+            # is 1 here because we are sending in a single word and not a sentence
+        """
+        x = x.unsqueeze(0)
+        embedding = self.dropout(self.embedding(x))
+        # embedding shape: (1, N, embedding_size)
+        
+        outputs, hidden = self.lstm(embedding, hidden)
+        # outputs shape: (1, N, hidden_size)
+        
+        predictions = self.Linear(outputs)
+        
+        # predictions shape: (1, N, length_target_vocabulary) to send it to
+        # loss function we want it to be (N, length_target_vocabulary) so we're
+        # just gonna remove the first dim
+        predictions = predictions.squeeze(0)
+
+        return predictions, hidden
+
+"""## PreProcess"""
+
+import json
+import os
+import re
+from collections import defaultdict
+
+src_dir = "/HDD-1_data/dataset/VQA-v2"
+saving_dir = "../preprocess"
+
+top_answer = 1000
+
+def make_q_vocab():
+
+    dataset = os.listdir(src_dir + '/Questions')
+    regex = re.compile(r'(\W+)')
+    q_vocab = []
+    for file in dataset:
+
+        path = os.path.join(src_dir, 'Questions', file)
+        with open(path, 'r') as f:
+            q_data = json.load(f)
+        question = q_data['questions']
+        for idx, quest in enumerate(question):
+
+            split = regex.split(quest['question'].lower())
+            tmp = [w.strip() for w in split if len(w.strip()) > 0]
+            q_vocab.extend(tmp)
+
+    q_vocab = list(set(q_vocab))
+    q_vocab.sort()
+    q_vocab.insert(0, '<pad>')
+    q_vocab.insert(1, '<unk>')
+
+    if not os.path.exists(saving_dir): os.makedirs(saving_dir)
+    with open(saving_dir + '/question_vocabs.txt', 'w') as f:
+        f.writelines([v+'\n' for v in q_vocab])
+
+    print(f"total word:{len(q_vocab)}")
+
+def make_a_vocab(top_answer):
+
+    answers = defaultdict(lambda :0)
+    dataset = os.listdir(src_dir + '/Annotations')
+    for file in dataset:
+        path = os.path.join(src_dir, 'Annotations', file)
+        with open(path, 'r') as f:
+            data = json.load(f)
+        annotations = data['annotations']
+        for label in annotations:
+            for ans in label['answers']:
+                vocab = ans['answer']
+                if re.search(r'[^\w\s]', vocab):
+                    continue
+                answers[vocab] += 1
+
+    answers = sorted(answers, key=answers.get, reverse= True) # sort by numbers
+    top_answers = ['<unk>'] + answers[:top_answer-1]
+    with open(saving_dir + '/annotation_vocabs.txt', 'w') as f :
+        f.writelines([ans+'\n' for ans in top_answers])
+
+    print(f'The number of total words of answers: {len(answers)}')
+    print(f'Keep top {top_answers} answers into vocab' )
+
+make_q_vocab()
+make_a_vocab(top_answer)
+
+import os
+import re
+import json
+import glob
+import numpy as np
+
+image_dir = "../data/resize_image"
+annotation_dir = "/HDD-1_data/dataset/VQA-v2/Annotations"
+question_dir = "/HDD-1_data/dataset/VQA-v2/Questions"
+output_dir = "../data"
+
+def preprocessing(question, annotation_dir, image_dir, labeled):
+
+    with open(question, 'r') as f:
+        data = json.load(f)
+        questions = data['questions']
+        if data['data_subtype'] == 'test-dev2015':
+            filename = 'test2015'   # images of test-dev are same as test images
+        else:
+            filename = data['data_subtype']
+
+    if labeled:
+        template = annotation_dir + f'/*{filename}*.json'
+        annotation_path = glob.glob(template)[0]
+        with open(annotation_path) as f:
+            annotations = json.load(f)['annotations']
+        question_dict = {ans['question_id']: ans for ans in annotations}
+
+    match_top_ans.unk_ans = 0
+    dataset = [None]*len(questions)
+    for idx, qu in enumerate(questions):
+        if (idx+1) % 10000 == 0:
+            print(f'processing {data["data_subtype"]} data: {idx+1}/{len(questions)}')
+        qu_id = qu['question_id']
+        qu_sentence = qu['question']
+        qu_tokens = tokenizer(qu_sentence)
+        img_id = qu['image_id']
+        img_name = 'COCO_' + filename + '_{:0>12d}.jpg'.format(img_id)
+        img_path = os.path.join(image_dir, filename, img_name)
+
+        info = {'img_name': img_name,
+                'img_path': img_path,
+                'qu_sentence': qu_sentence,
+                'qu_tokens': qu_tokens,
+                'qu_id': qu_id}
+
+        if labeled:
+
+            annotation_ans = question_dict[qu_id]['answers']
+            all_ans, valid_ans = match_top_ans(annotation_ans)
+            info['all_ans'] = all_ans
+            info['valid_ans'] = valid_ans
+
+        dataset[idx] = info
+
+    print(f'total {match_top_ans.unk_ans} out of {len(questions)} answers are <unk>')
+    return dataset
+
+def tokenizer(sentence):
+
+    regex = re.compile(r'(\W+)')
+    tokens = regex.split(sentence.lower())
+    tokens = [w.strip() for w in tokens if len(w.strip()) > 0]
+    return tokens
+
+def match_top_ans(annotation_ans):
+
+    annotation_dir = output_dir + '/annotation_vocabs.txt'
+    if "top_ans" not in match_top_ans.__dict__:
+        with open(annotation_dir, 'r') as f:
+            match_top_ans.top_ans = {line.strip() for line in f}
+    annotation_ans = {ans['answer'] for ans in annotation_ans}
+    valid_ans = match_top_ans.top_ans & annotation_ans
+
+    if len(valid_ans) == 0:
+        valid_ans = ['<unk>']
+        match_top_ans.unk_ans += 1
+
+    return annotation_ans, valid_ans
+
+def main():
+
+    processed_data = {}
+    for file in os.listdir(question_dir):
+
+        datatype = file[20:-19]
+        labeled = False if "test" in datatype else True
+        question = os.path.join(question_dir, file)
+        processed_data[datatype] = preprocessing(question, annotation_dir, image_dir, labeled)
+
+    processed_data['train-val'] = processed_data['train'] + processed_data['val']
+    for key, value in processed_data.items():
+        np.save(os.path.join(output_dir, f'{key}.npy'), np.array(value))
+
+main()
+
+import os
+import argparse
+from PIL import Image
+
+
+def resize_image(image, size):
+    """Resize an image to the given size."""
+    return image.resize(size, Image.ANTIALIAS)
+
+
+def resize_images(input_dir, output_dir, size):
+    """Resize the images in 'input_dir' and save into 'output_dir'."""
+    for idir in os.scandir(input_dir):
+        if not idir.is_dir():
+            continue
+        if not os.path.exists(output_dir+'/'+idir.name):
+            os.makedirs(output_dir+'/'+idir.name)    
+        images = os.listdir(idir.path)
+        n_images = len(images)
+        for iimage, image in enumerate(images):
+            try:
+                with open(os.path.join(idir.path, image), 'r+b') as f:
+                    with Image.open(f) as img:
+                        img = resize_image(img, size)
+                        img.save(os.path.join(output_dir+'/'+idir.name, image), img.format)
+            except(IOError, SyntaxError) as e:
+                pass
+            if (iimage+1) % 1000 == 0:
+                print("[{}/{}] Resized the images and saved into '{}'."
+                      .format(iimage+1, n_images, output_dir+'/'+idir.name))
+            
+            
+def main(args):
+
+    input_dir = args.input_dir
+    output_dir = args.output_dir
+    image_size = [args.image_size, args.image_size]
+    resize_images(input_dir, output_dir, image_size)
+
+parser = argparse.ArgumentParser()
+
+parser.add_argument('--input_dir', type=str, default="/HDD-1_data/dataset/VQA-v2/Images/mscoco",
+                    help='directory for input images (unresized images)')
+
+parser.add_argument('--output_dir', type=str, default='../data/resize_image',
+                    help='directory for output images (resized images)')
+
+parser.add_argument('--image_size', type=int, default=224,
+                    help='size of images after resizing')
+
+args = parser.parse_args()
+
+main(args)
+
+"""## Dataset"""
+
+import numpy as np
+import os
+
+from torch.utils.data import Dataset
+from torchvision import transforms
+from torch.utils.data import DataLoader
+from PIL import Image
+
+INPUT_DIR = '../data'
+
+class VQADataset(Dataset):
+
+    def __init__(self, input_dir, input_file, max_qu_len = 30, transform = None):
+
+        self.input_data = np.load(os.path.join(input_dir, input_file), allow_pickle=True)
+        self.qu_vocab = Vocab(input_dir+'/question_vocabs.txt')
+        self.ans_vocab = Vocab(input_dir+'/annotation_vocabs.txt')
+        self.max_qu_len = max_qu_len
+        self.labeled = True if not "test" in input_file else False
+        self.transform = transform
+
+    def __getitem__(self, idx):
+
+        path = self.input_data[idx]['img_path']
+        img = np.array(Image.open(path).convert('RGB'))
+        qu_id = self.input_data[idx]['qu_id']
+        qu_tokens = self.input_data[idx]['qu_tokens']
+        qu2idx = np.array([self.qu_vocab.word2idx('<pad>')] * self.max_qu_len)
+        qu2idx[:len(qu_tokens)] = [self.qu_vocab.word2idx(token) for token in qu_tokens]
+        sample = {'image': img, 'question': qu2idx, 'question_id': qu_id}
+
+        if self.labeled:
+            ans2idx = [self.ans_vocab.word2idx(ans) for ans in self.input_data[idx]['valid_ans']]
+            ans2idx = np.random.choice(ans2idx)
+            sample['answer'] = ans2idx
+
+        if self.transform:
+            sample['image'] = self.transform(sample['image'])
+
+        return sample
+
+    def __len__(self):
+
+        return len(self.input_data)
+
+def data_loader(input_dir, batch_size, max_qu_len, num_worker):
+
+    transform = transforms.Compose([
+        transforms.ToTensor(),  # convert to (C,H,W) and [0,1]
+        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))  # mean=0; std=1
+    ])
+
+    vqa_dataset = {
+        'train': VQADataset(
+            input_dir=input_dir,
+            input_file='train.npy',
+            max_qu_len=max_qu_len,
+            transform=transform),
+        'val': VQADataset(
+            input_dir=input_dir,
+            input_file='val.npy',
+            max_qu_len=max_qu_len,
+            transform=transform)
+    }
+
+    dataloader = {
+        key: DataLoader(
+            dataset=vqa_dataset[key],
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=num_worker)
+        for key in ['train', 'val']
+    }
+
+    return dataloader
+
+class Vocab:
+
+    def __init__(self, vocab_file):
+
+        self.vocab = self.load_vocab(vocab_file)
+        self.vocab2idx = {vocab: idx for idx, vocab in enumerate(self.vocab)}
+        self.vocab_size = len(self.vocab)
+
+    def load_vocab(self, vocab_file):
+
+        with open(vocab_file) as f:
+            vocab = [v.strip() for v in f]
+
+        return vocab
+
+    def word2idx(self, vocab):
+
+        if vocab in self.vocab2idx:
+            return self.vocab2idx[vocab]
+        else:
+            return self.vocab2idx['<unk>']
+
+    def idx2word(self, idx):
+
+        return self.vocab[idx]
+
+"""## Model"""
+
+BATCH_SIZE = 150
+MAX_QU_LEN = 30
+NUM_WORKER = 8
+FEATURE_SIZE, WORD_EMBED = 1024, 300
+NUM_HIDDEN, HIDDEN_SIZE = 2, 512
+LEARNING_RATE, STEP_SIZE, GAMMA = 0.001, 10, 0.1
+EPOCH = 50
+DATA_DIR = '../data'
+
+dataloader = data_loader(input_dir=DATA_DIR, batch_size=BATCH_SIZE, max_qu_len=MAX_QU_LEN, num_worker=NUM_WORKER)
+qu_vocab_size = dataloader['train'].dataset.qu_vocab.vocab_size
+
+class LSTM_Encoder_Decoder(torch.nn.Module):
+    def __init__(self, num_layers=2, bidirectional=False, prob=0.5, freeze_encoder=True):
+        super().__init__()
+      
+        self.encoder = LSTM_Encoder(feature_size=FEATURE_SIZE, qu_vocab_size=qu_vocab_size, word_embed=WORD_EMBED, 
+                                    hidden_size=HIDDEN_SIZE, num_hidden=NUM_HIDDEN)
+        #freeze encoder
+        if freeze_encoder:
+            for p in self.encoder.parameters():
+                p.requires_grad = False
+        
+        self.embedding_layer = nn.Embedding(qu_vocab_size=qu_vocab_size, word_embed=WORD_EMBED)
+
+        self.decoder = LSTM_Decoder(embedding=self.embedding_layer,
+                            output_size=qu_vocab_size, 
+                            num_layers=2, 
+                            bidirectional=False, 
+                            prob=0.5)
+        
+        self.start_token = 101 # <cls>
+        self.end_token = 102 # <sep>
+        
+        self.D = 2 if bidirectional==True else 1
+
+    def forward(self, image, question, answer_tokenized = None, teacher_force_ratio=0.5, max_sequence_length=50):
+        """
+            Train phase forward propagation
+        """
+        
+        batch_size = 150
+        target_len = max_sequence_length if answer_tokenized is None else answer_tokenized.shape[0]
+        target_vocab_size = self.Tokenizer.vocab_size
+        
+        outputs = torch.zeros(target_len, batch_size, target_vocab_size).cuda()
+        
+        #encoder
+  
+        encoder_output = self.encoder(image, question)
+            
+        # encoder_output shape: (N, hidden_size) to send it to Decoder as hidden,
+        # we want it to be (D*num_layers, N, hidden_size) so we're just gonna expand it.
+        
+        h = encoder_output.expand(self.D*self.decoder.num_layers, -1, -1)
+        # h shape: (D*num_layers, N, hidden_size)
+        
+        c = torch.zeros(*h.shape).cuda()
+        hidden = (h.contiguous(),c.contiguous())
+            
+        # Send <cls> token to decoder
+        x =  torch.tensor([self.start_token]*batch_size).cuda()
+        
+        for t in range(0, target_len):
+            output, hidden = self.decoder(x, hidden)
+
+            # Store next output prediction
+            outputs[t] = output
+
+            # Get the best word the decoder predicted (index in the vocabulary)
+            best_guess = output.argmax(1)
+
+            # With probability of teacher_force_ratio we take the actual next word
+            # otherwise we take the word that the decoder predicted it to be.
+            # Teacher Forcing is used so that the model gets used to seeing
+            # similar inputs at training and testing time, if teacher forcing is 1
+            # then inputs at test time might be completely different than what the
+            # network is used to.
+            x = answer_tokenized[t] if random.random() < teacher_force_ratio else best_guess
+
+        return outputs
+
+    def save(self, dir_, epoch):
+        if not(os.path.exists(dir_)):
+            os.makedirs(dir_, exist_ok=True)
+        path = os.path.join(dir_, f"{self.name}.{epoch}.torch")
+        torch.save(self.state_dict(), path)
