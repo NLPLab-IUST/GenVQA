@@ -25,15 +25,15 @@ def resize_images(input_dir, output_dir, size):
                         img.save(os.path.join(output_dir+'/'+idir.name, image), img.format)
             except(IOError, SyntaxError) as e:
                 pass
-            if (iimage+1) % 1000 == 0:
+            if (iimage+1) % 10000 == 0:
                 print("[{}/{}] Resized the images and saved into '{}'."
                       .format(iimage+1, n_images, output_dir+'/'+idir.name))
             
             
 def main():
 
-    input_dir = 'data/coco_img'
-    output_dir = 'data/resize_image'
+    input_dir = '/mnt/Mahmoudi/coco_img'
+    output_dir = '/mnt/Mahmoudi/coco_img/resize_image'
     image_size = [224, 224]
     resize_images(input_dir, output_dir, image_size)
 
